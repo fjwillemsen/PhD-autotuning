@@ -1,3 +1,6 @@
 [submodule "kernel_tuner"]
 	path = kernel_tuner
 	url = https://github.com/benvanwerkhoven/kernel_tuner
+[submodule "kernel_tuner_tutorial"]
+	path = kernel_tuner_tutorial
+	url = https://github.com/benvanwerkhoven/kernel_tuner_tutorial
