@@ -9,7 +9,6 @@ import os
 os.chdir("../cached_runs")
 import sys
 sys.path.append("../cached_runs")
-# convolution = importlib.import_module("convolution")
 
 
 class StatisticalData():
@@ -54,7 +53,7 @@ class StatisticalData():
             },
             'firefly': {
                 'name': 'firefly_algorithm',
-                'display_name': 'Firefly algorithm',
+                'display_name': 'Firefly Algorithm',
                 'nums_of_evaluations': default_number_of_evaluations,
                 'repeats': default_number_of_repeats,
                 'options': {},
@@ -163,8 +162,8 @@ class StatisticalData():
             self.cache.set_strategy(deepcopy(strategy), results_to_write)
             print("")
 
-    def plot_strategies_errorbar(self, metric='GFLOP/s'):
-        """ Plots all strategies with errorbars """
+    def plot_strategies_errorbar(self, metric='GFLOP/s', shaded=True):
+        """ Plots all strategies with errorbars, shaded plots a shaded error region instead of error bars """
         for strategy in self.strategies.values():
 
             # must use cached data written by collect_data() earlier
@@ -173,15 +172,19 @@ class StatisticalData():
             if cached_data is not None:
                 results = cached_data['results']['results_per_number_of_evaluations']
                 actual_num_evals = np.array([])
-                gflops = np.array([])
-                gflops_error = np.array([])
+                perf = np.array([])
+                perf_error = np.array([])
                 for key in results.keys():
                     result = results[key]
                     actual_num_evals = np.append(actual_num_evals, result['mean_actual_num_evals'])
-                    gflops = np.append(gflops, result['mean_' + metric])
-                    gflops_error = np.append(gflops_error, result['err_' + metric])
+                    perf = np.append(perf, result['mean_' + metric])
+                    perf_error = np.append(perf_error, result['err_' + metric])
                 # add to the plot
-                plt.errorbar(actual_num_evals, gflops, gflops_error, marker='o', label=strategy['display_name'])
+                if shaded:
+                    plt.plot(actual_num_evals, perf, marker='o', linestyle='--', label=strategy['display_name'])
+                    plt.fill_between(actual_num_evals, perf - perf_error, perf + perf_error, alpha=0.2, antialiased=True)
+                else:
+                    plt.errorbar(actual_num_evals, perf, perf_error, marker='o', linestyle='--', label=strategy['display_name'])
             else:
                 raise ValueError("Strategy {} not in cache, make sure collect_data() has ran first".format(strategy['display_name']))
 
