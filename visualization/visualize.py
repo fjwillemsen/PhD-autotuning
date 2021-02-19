@@ -1,213 +1,195 @@
+from caching import CacheInterface, CachedObject
+from copy import deepcopy
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy
+
 import importlib
 import os
 os.chdir("../cached_runs")
 import sys
 sys.path.append("../cached_runs")
-import json
-from copy import deepcopy
-
-import matplotlib.pyplot as plt
-import numpy as np
-import scipy
-
-convolution = importlib.import_module("convolution")
+# convolution = importlib.import_module("convolution")
 
 
-class CachedObject():
+class StatisticalData():
+    """ Object that captures all statistical data and functions to visualize, plots have possible metrics 'GFLOP/s' or 'time' """
 
-    def __init__(self, kernel_name: str, device_name: str, strategies: dict = None):
-        try:
-            cache = CacheInterface.read(kernel_name, device_name)
-            self.kernel_name = cache['kernel_name']
-            self.device_name = cache['device_name']
-            self.obj = cache
-        except (FileNotFoundError, json.decoder.JSONDecodeError) as e:
-            print(e)
-            self.kernel_name = kernel_name
-            self.device_name = device_name
-            self.obj = {
-                "kernel_name": kernel_name,
-                "device_name": device_name,
-                "strategies": strategies
+    metric_displayname = dict({
+        'time': 'Time in seconds',
+        'GFLOP/s': 'GFLOP/s',
+    })
+
+    def __init__(self, kernel, kernel_name, device_name):
+        self.kernel = kernel
+        self.kernel_name = kernel_name
+        self.device_name = device_name
+
+        # setup the strategies (beware that the options determine the maximum number of iterations, so setting this lower than the num_of_evaluations causes problems)
+        default_number_of_repeats = 7
+        default_number_of_evaluations = np.array([25, 50, 75, 100, 125, 150, 175, 200]).astype(int)
+        self.strategies = {
+        # 'brute_force': {
+        #     'name': 'brute_force',
+        #     'display_name': 'Brute Force',
+        #     'nums_of_evaluations': np.array([]).astype(int),
+        #     'repeats': 1,
+        #     'options': {},
+        # },
+            'random_sample': {
+                'name': 'random_sample',
+                'display_name': 'Random Sample',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': 20,
+                'options': {
+                    'fraction': 0.1
+                }
+            },
+            'genetic_algorithm': {
+                'name': 'genetic_algorithm',
+                'display_name': 'Genetic Algorithm',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': default_number_of_repeats,
+                'options': {}
+            },
+            'firefly': {
+                'name': 'firefly_algorithm',
+                'display_name': 'Firefly algorithm',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': default_number_of_repeats,
+                'options': {},
+            },
+            'pso': {
+                'name': 'pso',
+                'display_name': 'Particle Swarm Optimization',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': default_number_of_repeats,
+                'options': {},
             }
-
-    def read(self):
-        return CacheInterface.read(self.kernel_name, self.device_name)
-
-    def write(self):
-        return CacheInterface.write(self.obj)
-
-    # def build_strategy_index(self):
-    #     index = dict()
-    #     for i, strategy in enumerate(self.obj['strategies']):
-    #         index[strategy['name']] = i
-    #     return index
-
-    def has_strategy(self, strategy_name: str) -> bool:
-        return strategy_name in self.obj["strategies"].keys()
-
-    def has_matching_strategy(self, strategy_name: str, iterations_name: str, iterations: [], repeats: int) -> bool:
-        if self.has_strategy(strategy_name):
-            strategy = self.obj['strategies'][strategy_name]
-            if (strategy['name'] == strategy_name and strategy['iterations_name'] == iterations_name and strategy['iterations'] == iterations
-                    and strategy['repeats'] == repeats):
-                return True
-        return False
-
-    def get_strategy(self, strategy_name: str, iterations_name: str, iterations: [], repeats: int):
-        if self.has_matching_strategy(strategy_name, iterations_name, iterations, repeats):
-            return self.obj['strategies'][strategy_name]
-        return None
-
-    def set_strategy(self, strategy: dict(), gflops, gflops_error, evaluations):
-        strategy_name = strategy['name']
-        # delete old strategy if any
-        if self.has_strategy(strategy['name']):
-            del self.obj["strategies"][strategy_name]
-        # set new strategy
-        self.obj["strategies"][strategy_name] = strategy
-        # set new values
-        self.obj["strategies"][strategy_name]["gflops"] = gflops
-        self.obj["strategies"][strategy_name]["gflops_error"] = gflops_error
-        self.obj["strategies"][strategy_name]["evaluations"] = evaluations
-        self.write()
-
-
-class CacheInterface:
-
-    def file_n(kernel_name: str, device_name: str) -> str:
-        return 'cached_plot_' + kernel_name + '_' + device_name + '.json'
-
-    def read(kernel_name: str, device_name: str) -> CachedObject:
-        filename = CacheInterface.file_n(kernel_name, device_name)
-        with open(filename) as json_file:
-            return json.load(json_file)
-
-    def write(cached_object: dict):
-        filename = CacheInterface.file_n(cached_object['kernel_name'], cached_object['device_name'])
-        with open(filename, 'w') as json_file:
-            json.dump(cached_object, json_file)
-
-
-def plot(kernel_name='convolution', device_name='RTX_2070_SUPER', repeats=3):
-    total_iterations = 9400
-    iteration_fractions = np.arange(0.001, 0.2, 0.01)
-    iteration_fractions_list = iteration_fractions.tolist()
-    iterations_list = (total_iterations * iteration_fractions).astype(int).tolist()
-
-    strategies = {
-        'brute_force': {
-            'name': 'brute_force',
-            'display_name': 'Brute Force',
-            'iterations_name': 'maxiter',
-            'iterations': [total_iterations],
-            'repeats': 1
-        },
-        'random_sample': {
-            'name': 'random_sample',
-            'display_name': 'Random Sample',
-            'iterations_name': 'fraction',
-            'iterations': iteration_fractions_list,
-            'repeats': 10
-        },
-    # 'bayes_opt': {
-    #     'name': 'bayes_opt',
-    #     'display_name': 'Bayesian Optimization',
-    #     'iterations_name': 'maxiter',
-    #     'iterations': iterations_list,
-    #     'repeats': 3
-    # },
-        'firefly': {
-            'name': 'firefly_algorithm',
-            'display_name': 'Firefly algorithm',
-            'iterations_name': 'maxiter',
-            'iterations': iterations_list,
-            'repeats': 3
-        },
-        'pso': {
-            'name': 'pso',
-            'display_name': 'Particle Swarm Optimization',
-            'iterations_name': 'maxiter',
-            'iterations': iterations_list,
-            'repeats': 3
         }
-    }
 
-    # strategies = {
-    #     'brute_force': {
-    #         'name': 'brute_force',
-    #         'display_name': 'Brute Force',
-    #         'iterations_name': 'maxiter',
-    #         'iterations': [total_iterations],
-    #         'repeats': 1
-    #     },
-    #     'random_sample': {
-    #         'name': 'random_sample',
-    #         'display_name': 'Random Sample',
-    #         'iterations_name': 'fraction',
-    #         'iterations': iteration_fractions_list,
-    #         'repeats': 10
-    #     }
-    # }
+        self.collect_data()
 
-    # get or create a cache
-    cache = CachedObject(kernel_name, device_name, deepcopy(strategies))
+    def create_results_dict(self, strategy: dict) -> dict:
+        """ Creates a results dictionary for this strategy """
+        if len(strategy['nums_of_evaluations']) <= 0:
+            return None
 
-    # run all strategies
-    for strategy in strategies.values():
-        print("Running {}, iterations:".format(strategy['display_name']), end=' ')
-        evaluations = np.array([])
-        gflops = np.array([])
-        gflops_error = np.array([])
+        number_of_evaluations = np.array(strategy['nums_of_evaluations']).astype(int)
+        number_of_evaluations_as_keys = number_of_evaluations.astype(str).tolist()
 
-        # if the strategy is in the cache, use cached data
-        cached_data = cache.get_strategy(strategy['name'], strategy['iterations_name'], strategy['iterations'], strategy['repeats'])
-        if cached_data is not None and all(key in cached_data for key in ("evaluations", "gflops", "gflops_error")):
-            evaluations = np.array(cached_data['evaluations'])
-            gflops = np.array(cached_data['gflops'])
-            gflops_error = np.array(cached_data['gflops_error'])
-            # add to the plot
-            plt.errorbar(cached_data['evaluations'], cached_data['gflops'], cached_data['gflops_error'], marker='o', label=strategy['display_name'])
-            print("Retrieved from cache")
-            continue
+        # fill the results with the default values
+        results_per_number_of_evaluations_stats = {
+            'actual_num_evals': np.array([]),
+            'time': np.array([]),
+            'GFLOP/s': np.array([]),
+            'mean_actual_num_evals': 0,
+            'mean_GFLOP/s': 0,
+            'mean_time': 0,
+            'err_actual_num_evals': 0,
+            'err_GFLOP/s': 0,
+            'err_time': 0,
+        }
+        expected_results = dict({
+            'results_per_number_of_evaluations': dict.fromkeys(number_of_evaluations_as_keys),
+        })
+        for num_of_evaluations in number_of_evaluations_as_keys:
+            expected_results['results_per_number_of_evaluations'][num_of_evaluations] = deepcopy(results_per_number_of_evaluations_stats)
+        return expected_results
 
-        # execute the strategy
-        for iteration in strategy['iterations']:
-            full_iteration = round(iteration * total_iterations, 0) if strategy['iterations_name'] == 'fraction' else iteration
-            print("{}".format(full_iteration), end=', ', flush=True)
-            strategy_options = {
-                strategy['iterations_name']: iteration
-            }
-            res = None
-            gflops_local = np.array([])
-            for _ in range(strategy['repeats']):
-                # print(rep + 1, end=' ')
-                res, _ = convolution.tune(device_name=device_name, strategy=strategy['name'], strategy_options=strategy_options, verbose=False, quiet=True)
-                best = min(res, key=lambda x: x['time'])
-                gflops_local = np.append(gflops_local, best['GFLOP/s'])
+    def collect_data(self):
+        """ Executes strategies to obtain (or retrieve from cache) the statistical data """
+        # get or create a cache
+        self.cache = CachedObject(self.kernel_name, self.device_name, deepcopy(self.strategies))
 
-            # register the average values
-            gflops = np.append(gflops, np.mean(gflops_local))
-            gflops_error = np.append(gflops_error, np.std(gflops_local))
-            evaluations = np.append(evaluations, full_iteration)
-            # try:
-            #     assert full_iteration >= len(res)
-            # except:
-            #     raise AssertionError("Number of executed evaluations ({}) exceeds maximum requested evaluations ({})".format(len(res), evaluations[-1]))
+        # run all strategies
+        for strategy in self.strategies.values():
+            print("Running {} {} times, progress:".format(strategy['display_name'], strategy['repeats']), end=' ')
 
-        # add to the plot
-        plt.errorbar(evaluations, gflops, gflops_error, marker='o', label=strategy['display_name'])
+            # if the strategy is in the cache, use cached data
+            expected_results = self.create_results_dict(strategy)
+            cached_data = self.cache.get_strategy_results(strategy['name'], strategy['options'], strategy['repeats'], expected_results)
+            if cached_data is not None:
+                print("Retrieved from cache")
+                continue
 
-        # write to the cache
-        cache.set_strategy(strategy=deepcopy(strategy), gflops=gflops.tolist(), gflops_error=gflops_error.tolist(), evaluations=evaluations.tolist())
-        print("")
+            # repeat the strategy as specified
+            repeated_results = list()
+            nums_of_evaluations = strategy['nums_of_evaluations']
+            for rep in range(strategy['repeats']):
+                print(rep + 1, end=', ', flush=True)
+                res, _ = self.kernel.tune(device_name=self.device_name, strategy=strategy['name'], strategy_options=strategy['options'], verbose=False,
+                                          quiet=True)
+                repeated_results.append(res)
+                if len(strategy['nums_of_evaluations']) <= 0:
+                    nums_of_evaluations = np.append(nums_of_evaluations, len(res))
 
-    # plot setup
-    # plt.xlim(right=10000)
-    plt.xlabel("Number of evaluations required")
-    plt.ylabel("GFLOP/s")
-    plt.legend()
-    plt.show()
+            # create the results dict for this strategy
+            strategy['nums_of_evaluations'] = nums_of_evaluations
+            results_to_write = self.create_results_dict(strategy)
+
+            # for every number of evaluations specified, find the best and collect details on it
+            for res in repeated_results:
+                for num_of_evaluations in nums_of_evaluations:
+                    limited_res = res[:num_of_evaluations]
+                    best = min(limited_res, key=lambda x: x['time'])
+                    time = best['time']
+                    gflops = best['GFLOP/s'] if 'GFLOP/s' in best else np.nan
+
+                    # write to the results
+                    result = results_to_write['results_per_number_of_evaluations'][str(num_of_evaluations)]
+                    result['actual_num_evals'] = np.append(result['actual_num_evals'], len(limited_res))
+                    result['time'] = np.append(result['time'], time)
+                    result['GFLOP/s'] = np.append(result['GFLOP/s'], gflops)
+            print("")
+
+            # check and summarise results
+            for num_of_evaluations in nums_of_evaluations:
+                result = results_to_write['results_per_number_of_evaluations'][str(num_of_evaluations)]
+                result['mean_actual_num_evals'] = np.mean(result['actual_num_evals'])
+                result['mean_time'] = np.mean(result['time'])
+                result['mean_GFLOP/s'] = np.mean(result['GFLOP/s'])
+                result['err_actual_num_evals'] = np.std(result['actual_num_evals'])
+                result['err_time'] = np.std(result['time'])
+                result['err_GFLOP/s'] = np.std(result['GFLOP/s'])
+                if result['err_actual_num_evals'] > 0:
+                    raise ValueError('The number of actual evaluations over the runs has varied: {}'.format(result['actual_num_evals']))
+                if result['mean_actual_num_evals'] != num_of_evaluations:
+                    print(
+                        "The set number of evaluations ({}) is not equal to the actual number of evaluations ({}). Try increasing the fraction or maxiter in strategy options."
+                        .format(num_of_evaluations, result['mean_actual_num_evals']))
+
+            # write to the cache
+            self.cache.set_strategy(deepcopy(strategy), results_to_write)
+            print("")
+
+    def plot_strategies_errorbar(self, metric='GFLOP/s'):
+        """ Plots all strategies with errorbars """
+        for strategy in self.strategies.values():
+
+            # must use cached data written by collect_data() earlier
+            expected_results = self.create_results_dict(strategy)
+            cached_data = self.cache.get_strategy_results(strategy['name'], strategy['options'], strategy['repeats'], expected_results)
+            if cached_data is not None:
+                results = cached_data['results']['results_per_number_of_evaluations']
+                actual_num_evals = np.array([])
+                gflops = np.array([])
+                gflops_error = np.array([])
+                for key in results.keys():
+                    result = results[key]
+                    actual_num_evals = np.append(actual_num_evals, result['mean_actual_num_evals'])
+                    gflops = np.append(gflops, result['mean_' + metric])
+                    gflops_error = np.append(gflops_error, result['err_' + metric])
+                # add to the plot
+                plt.errorbar(actual_num_evals, gflops, gflops_error, marker='o', label=strategy['display_name'])
+            else:
+                raise ValueError("Strategy {} not in cache, make sure collect_data() has ran first".format(strategy['display_name']))
+
+        # plot setup
+        plt.xlabel("Number of evaluations required")
+        plt.ylabel(self.metric_displayname[metric])
+        plt.legend()
+        plt.show()
 
 
 if __name__ == "__main__":
@@ -218,6 +200,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         kernel_name = sys.argv[1] or None
         device_name = sys.argv[2] or None
-        plot(kernel_name, device_name=device_name)
+        kernel = importlib.import_module(kernel_name)
+        stats = StatisticalData(kernel, kernel_name, device_name=device_name)
+        stats.plot_strategies_errorbar()
     else:
-        plot()
+        raise ValueError("Bad arguments")
