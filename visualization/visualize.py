@@ -25,7 +25,7 @@ class StatisticalData():
         self.device_name = device_name
 
         # setup the strategies (beware that the options determine the maximum number of iterations, so setting this lower than the num_of_evaluations causes problems)
-        default_number_of_repeats = 7
+        default_number_of_repeats = 8
         default_number_of_evaluations = np.array([25, 50, 75, 100, 125, 150, 175, 200]).astype(int)
         self.strategies = {
         # 'brute_force': {
@@ -64,7 +64,14 @@ class StatisticalData():
                 'nums_of_evaluations': default_number_of_evaluations,
                 'repeats': default_number_of_repeats,
                 'options': {},
-            }
+            },
+        # 'bayes_opt': {
+        #     'name': 'bayes_opt',
+        #     'display_name': 'Bayesian Optimization',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': default_number_of_repeats,
+        #     'options': {},
+        # }
         }
 
         self.collect_data()
@@ -205,6 +212,6 @@ if __name__ == "__main__":
         device_name = sys.argv[2] or None
         kernel = importlib.import_module(kernel_name)
         stats = StatisticalData(kernel, kernel_name, device_name=device_name)
-        stats.plot_strategies_errorbar()
+        stats.plot_strategies_errorbar(metric='GFLOP/s', shaded=True)
     else:
         raise ValueError("Bad arguments")
