@@ -51,27 +51,27 @@ class StatisticalData():
                 'repeats': default_number_of_repeats,
                 'options': {}
             },
-            'firefly': {
-                'name': 'firefly_algorithm',
-                'display_name': 'Firefly Algorithm',
-                'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': default_number_of_repeats,
-                'options': {},
-            },
-            'pso': {
-                'name': 'pso',
-                'display_name': 'Particle Swarm Optimization',
-                'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': default_number_of_repeats,
-                'options': {},
-            },
-        # 'bayes_opt': {
-        #     'name': 'bayes_opt',
-        #     'display_name': 'Bayesian Optimization',
+        # 'firefly': {
+        #     'name': 'firefly_algorithm',
+        #     'display_name': 'Firefly Algorithm',
         #     'nums_of_evaluations': default_number_of_evaluations,
         #     'repeats': default_number_of_repeats,
         #     'options': {},
-        # }
+        # },
+        # 'pso': {
+        #     'name': 'pso',
+        #     'display_name': 'Particle Swarm Optimization',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': default_number_of_repeats,
+        #     'options': {},
+        # },
+            'bayes_opt': {
+                'name': 'bayes_opt',
+                'display_name': 'Bayesian Optimization',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': default_number_of_repeats,
+                'options': {},
+            }
         }
 
         self.collect_data()
