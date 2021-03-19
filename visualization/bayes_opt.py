@@ -12,8 +12,8 @@ from scipy.stats import norm
 from sklearn.gaussian_process import GaussianProcessRegressor
 
 parameters = {
-    'x': np.asarray(range(1, 20)),
-    'y': np.array(range(1, 20)),
+    'x': np.asarray(range(1, 100)),
+    # 'y': np.array(range(1, 20)),
 }
 
 
@@ -211,6 +211,10 @@ class SurrogateModel():
         # print("Initial mean: {}, std: {}".format(init_mean, init_std))
         self.update_model()
 
+    def predict(self) -> (list, list):
+        """ Returns a list of values predicted by the surrogate model for the parameter configurations """
+        return self.__model.predict(list(x.get_as_list() for x in self.searchspace.search_space), return_std=True)
+
     def get(self, x: ParameterConfig) -> (float, float):
         """ Returns the value estimated by the surrogate model for a parameter configuration """
         # print("X: {}, list: {}".format(x, [x.get_as_list()]))
@@ -222,15 +226,15 @@ class SurrogateModel():
         observations = self.get_observations_values(must_be_valid=True)
         self.__model.fit(params, observations)
 
-    def do_next(self) -> ParameterConfig:
+    def do_next(self) -> (ParameterConfig, int, list):
         """ Find the next best candidate configuration, execute it and update the model accordingly """
-        candidate = self.get_candidate()
-        est_mu, est_std = self.get(candidate)
+        candidate, candidate_index, list_of_acquisition_values = self.get_candidate()
+        # est_mu, est_std = self.get(candidate)
         observation = evaluate_objective_function(candidate)
         # print("{} estimate: {} ({} std), observed: {}".format(observation.get_as_list(), est_mu, est_std, observation.observation))
         self.searchspace.set_visited(observation)
         self.update_model()
-        return observation
+        return observation, candidate_index, np.concatenate(list_of_acquisition_values)
 
     def get_observations(self):
         """ Get a list of all observations """
@@ -259,7 +263,7 @@ class SurrogateModel():
         """ Get the best observed configuration value so far """
         return min(self.get_observations_values(must_be_valid=True))
 
-    def get_candidate(self) -> ParameterConfig:
+    def get_candidate(self) -> (ParameterConfig, int, list):
         """ Get the next candidate observation """
         if len(self.get_observations()) >= self.searchspace.size():
             raise ValueError("The search space has been fully observed")
@@ -267,53 +271,40 @@ class SurrogateModel():
         return self.__af(self, self.__af_params)
 
 
-def af_probability_of_improvement(model: SurrogateModel, params: dict) -> ParameterConfig:
+def af_probability_of_improvement(model: SurrogateModel, params: dict) -> (ParameterConfig, int, list):
     """ Acquisition function Probability of Improvement (PI) """
     if params is None:
         params = {
             'explorationfactor': 0
         }
     fplus = model.get_best_observation_value() + params['explorationfactor']
-    best_prob = None
-    best_found = None
     # iterate over the entire unvisited model space to find the optimal
     unvisited = model.searchspace.unvisited()
     prob_of_improvement = lambda x_mu, x_std: norm.cdf((x_mu - fplus) / (x_std + 1E-9))
-    highest_pi = np.argmin(list(prob_of_improvement(*model.get(x)) for x in unvisited))
-    return unvisited[highest_pi]
-    # for x in model.searchspace.unvisited():
-    #     x_mu, x_std = model.get(x)
-    #     z_value = (x_mu - fplus) / (x_std + 1E-9)
-    #     prob_improvement = norm.cdf(z_value)
-    #     if best_prob is None or prob_improvement <= best_prob:
-    #         best_prob = prob_improvement
-    #         best_found = x
-    # return best_found
+    list_prob_of_improvement = list(prob_of_improvement(*model.get(x)) for x in unvisited)
+    highest_pi = np.argmin(list_prob_of_improvement)
+    return unvisited[highest_pi], highest_pi, list_prob_of_improvement
 
 
-def af_expected_improvement(model: SurrogateModel, params: dict) -> ParameterConfig:
+def af_expected_improvement(model: SurrogateModel, params: dict) -> (ParameterConfig, int, list):
     """ Acquisition function Expected Improvement (EI) """
     if params is None:
         params = {
             'explorationfactor': 0
         }
-    fplus = model.get_best_observation_value()
-    best_prob = None
-    best_found = None
+    fplus = model.get_best_observation_value() + params['explorationfactor']
     # iterate over the entire unvisited model space to find the optimal
-    for x in model.searchspace.unvisited():
-        x_mu, x_std = model.get(x)
-
-        prob_improvement = norm.cdf((x_mu - fplus) / (x_std + 1E-9))
-        if best_prob is None or prob_improvement <= best_prob:
-            best_prob = prob_improvement
-            best_found = x
-        # found_best = min(found_best, )
-    return best_found
+    unvisited = model.searchspace.unvisited()
+    diff = lambda x_mu: x_mu - fplus
+    diff_improvement = lambda x_mu, x_std: diff(x_mu) / (x_std + 1E-9)
+    exp_improvement = lambda x_mu, x_std: diff(x_mu) * norm.cdf(diff_improvement(x_mu, x_std)) + x_std * norm.pdf(diff_improvement(x_mu, x_std))
+    list_exp_improvement = list(exp_improvement(*model.get(x)) for x in unvisited)
+    highest_ei = np.argmin(list_exp_improvement)
+    return unvisited[highest_ei], highest_ei, list_exp_improvement
 
 
-# visualize the objective function and surrogate model
 def visualize():
+    """ visualize the objective function and surrogate model """
     ss = SearchSpace(parameters)
     ss_list = list(x.get_as_list() for x in ss.search_space)
     # brute-force the objective function
@@ -353,7 +344,8 @@ def visualize():
     # # scatter_matrix(data, alpha=0.2, figsize=(6, 6), diagonal='kde')
 
 
-def visualize_animated():
+def visualize_animated(acq_func=af_expected_improvement, plot_acquisition_values=True):
+    """ visualize the objective function, surrogate model and acquisition function (optional) animated over time """
     ss = SearchSpace(parameters)
     ss_list = list(x.get_as_list() for x in ss.search_space)
     # brute-force the objective function
@@ -361,54 +353,65 @@ def visualize_animated():
     for x in ss.search_space:
         x = evaluate_objective_function(x)
         objective_func.append(x.observation)
-    model = SurrogateModel(ss, af_probability_of_improvement)
+    model = SurrogateModel(ss, acq_func)
 
     # visualize
     x_data = range(len(ss_list))
-    fig, ax = plt.subplots()
-    ax.plot(objective_func, marker='o', linestyle="-", label='Objective function')
-    line, = ax.plot([], [], marker='.', linestyle=':', label='Surrogate model')
-    dot, = ax.plot(0, 0, 'ro', label='Best')
+    fig, axes = plt.subplots(figsize=(20, 10), ncols=2 if plot_acquisition_values else 1)
+    if plot_acquisition_values:
+        ax_main, ax_aqfunc = axes
+        acq_func_line, = ax_aqfunc.plot([], [], marker='.', linestyle=':', label='Acquisition values')
+        acq_func_candidate_line, = ax_aqfunc.plot([30, 30], [0, 2], marker='', linestyle='-', label='Next sampling point')
+    else:
+        ax_main = axes
+    ax_main.plot(objective_func, marker='o', linestyle="-", label='Objective function')
+    line, = ax_main.plot([], [], marker='.', linestyle=':', label='Surrogate model')
+    dot, = ax_main.plot(0, 0, 'ro', label='Best')
 
     def animation_init():
-        ax.set_xlabel("Parameter config index")
-        ax.set_ylabel("Value")
-        ax.legend()
+        ax_main.set_xlabel("Parameter config index")
+        ax_main.set_ylabel("Value")
+        ax_main.legend()
+        if plot_acquisition_values:
+            ax_aqfunc.set_ylabel("Acquisition value")
+            ax_aqfunc.set_xlabel("Unvisited parameter config value")
+            ax_aqfunc.set_xlim(0, len(x_data))
+            ax_aqfunc.legend()
         return line, dot,
 
     def update(frame_number):
         # apply bayesian optimization
-        model.do_next()
-        bo_mean = []
-        bo_std = []
-        for x in ss.search_space:
-            mean, std = model.get(x)
-            # mean = mean[:, 0]
-            bo_mean.append(mean[0])
-            bo_std.append(std[0])
+        _, candidate_index, list_acq_values = model.do_next()
+        bo_mean, bo_std = model.predict()
         bo_mean = np.array(bo_mean)
         bo_std = np.array(bo_std)
         # get the current best
         current_best = model.get_best_observation()
         # visualize
-        ax.collections.clear()
-        err = plt.fill_between(x_data, bo_mean - bo_std, bo_mean + bo_std, alpha=0.2, antialiased=True)
+        ax_main.collections.clear()
+        err = ax_main.fill_between(x_data, bo_mean - bo_std, bo_mean + bo_std, alpha=0.2, antialiased=True)
         line.set_data(x_data, bo_mean)
         dot.set_data(current_best.index, current_best.observation)
-        # line, = ax.plot(x_data, bo_mean, marker='o', linestyle='--', label='Surrogate model')
-        # return line, err,
+        # visualize acquisition values if applicable
+        if plot_acquisition_values:
+            acq_func_line.set_data(range(len(list_acq_values)), list_acq_values)
+            acq_func_candidate_line.set_data([candidate_index], [0, 1000])
+            ax_aqfunc.set_ylim(0, max(list_acq_values))
         return line, err, dot,
 
-    _ = FuncAnimation(fig, update, frames=89, interval=200, init_func=animation_init, blit=False, repeat=False)
-    ax.legend()
+    _ = FuncAnimation(fig, update, frames=89, interval=500, init_func=animation_init, blit=False, repeat=False)
+    ax_main.legend()
+    if plot_acquisition_values:
+        ax_aqfunc.legend()
     plt.show()
 
 
 def visualize_af_performance(repeats=7, max_evaluations=50):
     """ Visualize the performance of acquisition functions against the objective function """
     fig, ax = plt.subplots(figsize=(20, 10))
-    acquisition_functions = [(af_expected_improvement, None)]
-    # acquisition_functions = [(af_probability_of_improvement, None), (af_probability_of_improvement, dict(explorationfactor=0.5)), (af_expected_improvement, None), (af_expected_improvement, dict(explorationfactor=1))]
+    # acquisition_functions = [(af_probability_of_improvement, None), (af_expected_improvement, None)]
+    acquisition_functions = [(af_probability_of_improvement, None), (af_probability_of_improvement, dict(explorationfactor=0.5)),
+                             (af_expected_improvement, None), (af_expected_improvement, dict(explorationfactor=0.5))]
     ss = SearchSpace(parameters)
     # brute-force the objective function to find the optimal
     best_objective_observation = min(evaluate_objective_function(x).observation for x in ss.search_space if evaluate_objective_function(x).valid_observation)
@@ -436,7 +439,7 @@ def visualize_af_performance(repeats=7, max_evaluations=50):
         # fill the remaining indices with Nones
         collected_max_length = max(len(collected_best_distance_over_time[r]) for r in range(repeats))
         for r in range(repeats):
-            collected_best_distance_over_time[r] += list(None for _ in range(collected_max_length - len(collected_best_distance_over_time[r])))
+            collected_best_distance_over_time[r] += list(0 for _ in range(collected_max_length - len(collected_best_distance_over_time[r])))
         collected_lengths = np.array(list(len(collected_best_distance_over_time[r]) for r in range(repeats)))
         assert np.all(collected_lengths == collected_max_length), "Lengths should all be {}, yet are {}".format(collected_max_length, collected_lengths)
         # calculate mean and standard deviation over distances per number of evaluations
