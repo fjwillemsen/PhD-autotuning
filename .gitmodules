@@ -4,3 +4,6 @@
 [submodule "kernel_tuner_tutorial"]
 	path = kernel_tuner_tutorial
 	url = https://github.com/benvanwerkhoven/kernel_tuner_tutorial
+[submodule "kernel_tuner_simulation"]
+	path = kernel_tuner_simulation
+	url = git@github.com:benvanwerkhoven/kernel_tuner_simulation.git
