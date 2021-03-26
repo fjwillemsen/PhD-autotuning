@@ -5,6 +5,8 @@ from random import uniform as randuni
 import itertools
 import progressbar
 import matplotlib.pyplot as plt
+import matplotlib.cm as cmap
+import matplotlib.colors
 from matplotlib.animation import FuncAnimation
 import numpy as np
 import pandas as pd
@@ -12,17 +14,27 @@ from scipy.stats import norm
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, RBF
 
-parameters = {
-    'x': np.asarray(range(1, 20)),
-    'y': np.array(range(1, 20)),
-}
+# parameters = {
+#     'x': np.asarray(range(1, 5)),
+#     'y': np.array(range(1, 3)),
+# }
+
+# parameters = {
+#     'x': np.linspace(-1.5, 1.5, num=40),
+#     'y': np.linspace(-1.5, 1.5, num=40),
+# }
+
+# parameters = {
+#     'x': np.linspace(-10, 0, num=100),
+#     'y': np.linspace(-6.5, 0, num=100),
+# }
 
 parameters = {
-    'x': np.linspace(-1.5, 1.5, num=20),
-    'y': np.linspace(-1.5, 1.5, num=20),
+    'x': np.linspace(-2 * np.pi, 2 * np.pi, num=100),
+    'y': np.linspace(-2 * np.pi, 2 * np.pi, num=100),
 }
 
-num_initial_samples = 20
+num_initial_samples = 5
 
 
 class ParameterConfig():
@@ -30,7 +42,7 @@ class ParameterConfig():
     def __init__(self, param_dict: dict, index: int):
         self.__param_config = param_dict
         self.__observed = False
-        self.__observation = None
+        self.__observation = np.NaN
         self.__valid_observation = None
         self.index = index
 
@@ -50,7 +62,7 @@ class ParameterConfig():
         # print("Observed: {}, valid: {}, observation: {}".format(self.__observed, self.__valid_observation, self.__observation))
         if self.__observed and self.__valid_observation:
             return self.__observation
-        return None
+        return np.NaN
 
     def get_observation_safe(self) -> float:
         if self.__observed and self.__valid_observation:
@@ -64,7 +76,7 @@ class ParameterConfig():
     def observation(self, value: float):
         self.__observed = True
         self.__observation = value
-        if value == None or value <= 0:
+        if value == np.NaN:
             self.__valid_observation = False
         else:
             self.__valid_observation = True
@@ -93,6 +105,15 @@ class SearchSpace():
     @parameters.setter
     def parameters(self, value: dict):
         self.__parameters = value
+
+    def search_space_grid(self) -> list:
+        """ N-dimensional representation of the search space instead of 1-dimensional """
+        shape = tuple(len(params) for params in self.__parameters.values())
+        return np.reshape(self.__search_space, shape).tolist()
+
+    def search_space_grid_observations(self) -> list:
+        """ N-dimensional representation of the search space observations instead of 1-dimensional """
+        return list(list(x.observation for x in lst) for lst in self.search_space_grid())
 
     @property
     def search_space(self):
@@ -174,10 +195,19 @@ def evaluate_objective_function(x: ParameterConfig) -> ParameterConfig:
     # y_i = x_i
     y_i = x.param_config['y'] if 'y' in x.param_config.keys() else x_i
     # noise = randuni(-0.25, 0.25)
-    noise = 0
-    value = None if (x_i**2 + y_i**2) > 2 else ((1 - x_i)**2 + 100 * (y_i - x_i**2)**2) + noise    # Rosenbrock function constrained to a disk
+    # noise = 0
+
+    # Rosenbrock function constrained to a disk
+    # value = np.NaN if (x_i**2 + y_i**2) > 2 else ((1 - x_i)**2 + 100 * (y_i - x_i**2)**2) + noise
+
+    # Mishra's bird function
+    value = sin(x_i) * np.exp((1 - cos(y_i))**2) + cos(y_i) * np.exp((1 - sin(x_i))**2) + (x_i - y_i)**2
+
+    # Mishra's bird function (constrained)
+    # value = np.NaN if (x_i + 5)**2 + (y_i + 5)**2 < 25 else sin(x_i) * np.exp((1 - cos(y_i))**2) + cos(y_i) * np.exp((1 - sin(x_i))**2) + (x_i - y_i)**2
+
     # value = (x_i**2 * sin(5 * pi * x_i)**6.0) + noise
-    # value = None if x_i % 10 == 0 else 5 + 0.2 * sin(y_i) + 2 * cos(sqrt(x_i)) + noise
+    # value = np.NaN if x_i % 10 == 0 else 5 + 0.2 * sin(y_i) + 2 * cos(sqrt(x_i)) + noise
     x.observation = value
     return x
 
@@ -189,7 +219,7 @@ class SurrogateModel():
         self.__af = acquisition_function
         self.__af_params = acquisition_function_parameters
         self.__observations = []
-        kernel = ConstantKernel(1.0, constant_value_bounds="fixed") * RBF(5.0, length_scale_bounds="fixed")
+        kernel = ConstantKernel(1.0, constant_value_bounds="fixed") * RBF(1.0, length_scale_bounds="fixed")
         self.__model = GaussianProcessRegressor(kernel=kernel)
         self.initial_sample(num_initial_samples)
 
@@ -325,6 +355,55 @@ def af_expected_improvement(model: SurrogateModel, params: dict) -> (ParameterCo
     return unvisited[highest_ei], highest_ei, list_exp_improvement
 
 
+def visualize_searchspace_2D(explore="grid", resolution=0.15):
+    """ Visualize the search space and objective function """
+    ss = SearchSpace(parameters)
+    if explore == 'full':
+        # brute-force the objective function
+        for x in ss.search_space:
+            x = evaluate_objective_function(x)
+    if explore == 'random':
+        # random search over the objective function
+        for _ in range(round(ss.size() * resolution)):
+            index = randint(0, len(ss.unvisited_indices) - 1)
+            x = ss.unvisited()[index]
+            ss.set_visited(evaluate_objective_function(x))
+    if explore == 'grid':
+        # grid search over the objective function
+        to_visit = round(ss.size() * resolution)
+        step_size = ss.size() // to_visit
+        for i in range(to_visit):
+            index = i * step_size
+            x = ss.search_space[index]
+            x = evaluate_objective_function(x)
+
+    # normalize
+    valid_obs = list(x.observation for x in ss.search_space if x.valid_observation)
+    obs_min = np.nanmin(valid_obs)
+    obs_max = np.nanmax(valid_obs)
+    for x in ss.search_space:
+        if x.valid_observation:
+            x.observation = 1 - (x.observation - obs_min) / (obs_max - obs_min)
+    observations = ss.search_space_grid_observations()
+
+    # visualize
+    current_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["green", "silver", "slategrey", "gold"])
+    current_cmap.set_bad(color='darkred')
+    current_cmap.set_under(color='white')
+    x_params = ss.parameters['x']
+    y_params = ss.parameters['y']
+    extent = [min(x_params), max(x_params), min(y_params), max(y_params)]
+    # change x and y axis to be positive
+    if min(x_params) < 0 or min(y_params) < 0:
+        extent = [0, max(x_params) - min(x_params), 0, max(y_params) - min(y_params)]
+    plt.imshow(observations, extent=extent, cmap=current_cmap, interpolation='nearest')
+    cb = plt.colorbar()
+    cb.set_label('Gold content')
+    plt.xlabel('X parameter (meters)')
+    plt.ylabel('Y parameter (meters)')
+    plt.show()
+
+
 def visualize():
     """ Visualize the objective function and surrogate model """
     ss = SearchSpace(parameters)
@@ -377,13 +456,13 @@ def visualize_animated(acq_func=af_expected_improvement, plot_acquisition_values
     for x in ss.search_space:
         x = evaluate_objective_function(x)
         objective_func.append(x.observation)
-    best_objective_observation = min(x for x in objective_func if x is not None)
+    best_objective_observation = min(x for x in objective_func if x is not np.NaN)
     model = SurrogateModel(ss, acq_func)
 
     # visualize
     x_data = range(len(ss_list))
     number_of_columns = 3 if plot_acquisition_values else 2
-    fig, axes = plt.subplots(figsize=(20, 10), ncols=number_of_columns)
+    fig, axes = plt.subplots(figsize=(20, 8), ncols=number_of_columns, gridspec_kw={ 'width_ratios': [2, 2, 1] })
     if plot_acquisition_values:
         ax_main, ax_aqfunc, ax_distance_over_time = axes
         acq_func_line, = ax_aqfunc.plot([], [], marker='.', linestyle=':', label='Acquisition values')
@@ -503,4 +582,5 @@ def visualize_af_performance(repeats=49, max_evaluations=30):
 
 # visualize()
 # visualize_animated()
-visualize_af_performance()
+# visualize_af_performance()
+visualize_searchspace_2D()
