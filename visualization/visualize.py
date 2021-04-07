@@ -3,12 +3,16 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
+import progressbar
 
 import importlib
 import os
-os.chdir("../cached_runs")
 import sys
-sys.path.append("../cached_runs")
+
+
+def change_dir(dir: str):
+    os.chdir(dir)
+    sys.path.append(dir)
 
 
 class StatisticalData():
@@ -26,7 +30,8 @@ class StatisticalData():
 
         # setup the strategies (beware that the options determine the maximum number of iterations, so setting this lower than the num_of_evaluations causes problems)
         default_number_of_repeats = 8
-        default_number_of_evaluations = np.array([25, 50, 75, 100, 125, 150, 175, 200]).astype(int)
+        # default_number_of_evaluations = np.array([25, 50, 75, 100, 125, 150, 175, 200]).astype(int)
+        default_number_of_evaluations = np.array([25, 50]).astype(int)
         self.strategies = {
         # 'brute_force': {
         #     'name': 'brute_force',
@@ -35,43 +40,45 @@ class StatisticalData():
         #     'repeats': 1,
         #     'options': {},
         # },
-            'random_sample': {
-                'name': 'random_sample',
-                'display_name': 'Random Sample',
-                'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': 20,
-                'options': {
-                    'fraction': 0.1
-                }
-            },
-            'genetic_algorithm': {
-                'name': 'genetic_algorithm',
-                'display_name': 'Genetic Algorithm',
-                'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': default_number_of_repeats,
-                'options': {}
-            },
-            'firefly': {
-                'name': 'firefly_algorithm',
-                'display_name': 'Firefly Algorithm',
-                'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': default_number_of_repeats,
-                'options': {},
-            },
-            'pso': {
-                'name': 'pso',
-                'display_name': 'Particle Swarm Optimization',
-                'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': default_number_of_repeats,
-                'options': {},
-            },
-        # 'bayes_opt': {
-        #     'name': 'bayes_opt',
-        #     'display_name': 'Bayesian Optimization',
+        # 'random_sample': {
+        #     'name': 'random_sample',
+        #     'display_name': 'Random Sample',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': 20,
+        #     'options': {
+        #         'fraction': 0.1
+        #     }
+        # },
+        # 'genetic_algorithm': {
+        #     'name': 'genetic_algorithm',
+        #     'display_name': 'Genetic Algorithm',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': default_number_of_repeats,
+        #     'options': {}
+        # },
+        # 'firefly': {
+        #     'name': 'firefly_algorithm',
+        #     'display_name': 'Firefly Algorithm',
         #     'nums_of_evaluations': default_number_of_evaluations,
         #     'repeats': default_number_of_repeats,
         #     'options': {},
-        # }
+        # },
+        # 'pso': {
+        #     'name': 'pso',
+        #     'display_name': 'Particle Swarm Optimization',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': default_number_of_repeats,
+        #     'options': {},
+        # },
+            'bayes_opt': {
+                'name': 'bayes_opt',
+                'display_name': 'Bayesian Optimization',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': 1,
+                'options': {
+                    'maxiter': max(default_number_of_evaluations),
+                },
+            }
         }
 
         self.collect_data()
@@ -110,20 +117,20 @@ class StatisticalData():
 
         # run all strategies
         for strategy in self.strategies.values():
-            print("Running {} {} times, progress:".format(strategy['display_name'], strategy['repeats']), end=' ')
+            print("Running {}".format(strategy['display_name']))
 
             # if the strategy is in the cache, use cached data
             expected_results = self.create_results_dict(strategy)
             cached_data = self.cache.get_strategy_results(strategy['name'], strategy['options'], strategy['repeats'], expected_results)
             if cached_data is not None:
-                print("Retrieved from cache")
+                print("| retrieved from cache")
                 continue
 
             # repeat the strategy as specified
             repeated_results = list()
             nums_of_evaluations = strategy['nums_of_evaluations']
-            for rep in range(strategy['repeats']):
-                print(rep + 1, end=', ', flush=True)
+            for rep in progressbar.progressbar(range(strategy['repeats']), redirect_stdout=True):
+                # print(rep + 1, end=', ', flush=True)
                 res, _ = self.kernel.tune(device_name=self.device_name, strategy=strategy['name'], strategy_options=strategy['options'], verbose=False,
                                           quiet=True)
                 repeated_results.append(res)
@@ -147,7 +154,6 @@ class StatisticalData():
                     result['actual_num_evals'] = np.append(result['actual_num_evals'], len(limited_res))
                     result['time'] = np.append(result['time'], time)
                     result['GFLOP/s'] = np.append(result['GFLOP/s'], gflops)
-            print("")
 
             # check and summarise results
             for num_of_evaluations in nums_of_evaluations:
@@ -158,12 +164,12 @@ class StatisticalData():
                 result['err_actual_num_evals'] = np.std(result['actual_num_evals'])
                 result['err_time'] = np.std(result['time'])
                 result['err_GFLOP/s'] = np.std(result['GFLOP/s'])
-                if result['err_actual_num_evals'] > 0:
-                    raise ValueError('The number of actual evaluations over the runs has varied: {}'.format(result['actual_num_evals']))
-                if result['mean_actual_num_evals'] != num_of_evaluations:
-                    print(
-                        "The set number of evaluations ({}) is not equal to the actual number of evaluations ({}). Try increasing the fraction or maxiter in strategy options."
-                        .format(num_of_evaluations, result['mean_actual_num_evals']))
+                # if result['err_actual_num_evals'] > 0:
+                #     raise ValueError('The number of actual evaluations over the runs has varied: {}'.format(result['actual_num_evals']))
+                # if result['mean_actual_num_evals'] != num_of_evaluations:
+                #     print(
+                #         "The set number of evaluations ({}) is not equal to the actual number of evaluations ({}). Try increasing the fraction or maxiter in strategy options."
+                #         .format(num_of_evaluations, result['mean_actual_num_evals']))
 
             # write to the cache
             self.cache.set_strategy(deepcopy(strategy), results_to_write)
@@ -204,14 +210,16 @@ class StatisticalData():
 
 if __name__ == "__main__":
     if len(sys.argv) != 1 and len(sys.argv) != 3:
-        print("Usage: ./visualize.py [kernel name] [device name]")
+        print("Usage: visualize.py [kernel name] [device name]")
         exit(1)
 
     if len(sys.argv) > 1:
         kernel_name = sys.argv[1] or None
         device_name = sys.argv[2] or None
+        change_dir("../cached_runs")
         kernel = importlib.import_module(kernel_name)
         stats = StatisticalData(kernel, kernel_name, device_name=device_name)
-        stats.plot_strategies_errorbar(metric='GFLOP/s', shaded=True)
+        stats.plot_strategies_errorbar(metric='time', shaded=True)
+        stats.cache.delete()
     else:
-        raise ValueError("Bad arguments")
+        raise ValueError("Bad arguments, expected: visualize.py [kernel name] [device name]")

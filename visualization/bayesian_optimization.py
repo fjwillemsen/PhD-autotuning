@@ -30,8 +30,8 @@ from sklearn.gaussian_process.kernels import ConstantKernel, RBF
 # }
 
 parameters = {
-    'x': np.linspace(-2 * np.pi, 2 * np.pi, num=100),
-    'y': np.linspace(-2 * np.pi, 2 * np.pi, num=100),
+    'x': np.linspace(-2 * np.pi, 2 * np.pi, num=50),
+    'y': np.linspace(-2 * np.pi, 2 * np.pi, num=50),
 }
 
 num_initial_samples = 5
@@ -114,6 +114,12 @@ class SearchSpace():
     def search_space_grid_observations(self) -> list:
         """ N-dimensional representation of the search space observations instead of 1-dimensional """
         return list(list(x.observation for x in lst) for lst in self.search_space_grid())
+
+    def search_space_grid_observations_normalized(self, obs_min: float, obs_max: float) -> list:
+        """ N-dimensional representation of the normalized search space observations instead of 1-dimensional """
+        norm_const = obs_max - obs_min
+        return list(
+            list(1 - ((x.observation - obs_min) / norm_const) if x.valid_observation else x.observation for x in lst) for lst in self.search_space_grid())
 
     @property
     def search_space(self):
@@ -215,6 +221,7 @@ def evaluate_objective_function(x: ParameterConfig) -> ParameterConfig:
 class SurrogateModel():
 
     def __init__(self, searchspace: SearchSpace, acquisition_function, acquisition_function_parameters=None, num_initial_samples=num_initial_samples):
+        self.__best_observed_value = np.inf
         self.searchspace = searchspace
         self.__af = acquisition_function
         self.__af_params = acquisition_function_parameters
@@ -276,6 +283,8 @@ class SurrogateModel():
         if len(list_of_acquisition_values) > 0: list_of_acquisition_values = np.concatenate(list_of_acquisition_values)
         # est_mu, est_std = self.get(candidate)
         observation = evaluate_objective_function(candidate)
+        if observation.valid_observation and observation.observation < self.get_best_observation_value():
+            self.__best_observed_value = observation.observation
         # print("{} estimate: {} ({} std), observed: {}".format(observation.get_as_list(), est_mu, est_std, observation.observation))
         self.searchspace.set_visited(observation)
         self.update_model()
@@ -304,9 +313,11 @@ class SurrogateModel():
         index = np.argmin(self.get_observations_values(must_be_valid=True))
         return self.get_valid_observations()[index]
 
-    def get_best_observation_value(self) -> float:
+    def get_best_observation_value(self, allow_cached=True) -> float:
         """ Get the best observed configuration value so far """
-        return min(self.get_observations_values(must_be_valid=True))
+        if not allow_cached:
+            return min(self.get_observations_values(must_be_valid=True))
+        return self.__best_observed_value
 
     def get_candidate(self) -> (ParameterConfig, int, list):
         """ Get the next candidate observation """
@@ -355,13 +366,16 @@ def af_expected_improvement(model: SurrogateModel, params: dict) -> (ParameterCo
     return unvisited[highest_ei], highest_ei, list_exp_improvement
 
 
-def visualize_searchspace_2D(explore="grid", resolution=0.15):
+def visualize_searchspace_2D(explore="random", resolution=0.0215):
     """ Visualize the search space and objective function """
-    ss = SearchSpace(parameters)
+    fully_explored_ss = SearchSpace(parameters)
+    # brute-force the objective function
+    for x in fully_explored_ss.search_space:
+        x = evaluate_objective_function(x)
     if explore == 'full':
-        # brute-force the objective function
-        for x in ss.search_space:
-            x = evaluate_objective_function(x)
+        ss = fully_explored_ss
+    else:
+        ss = SearchSpace(parameters)
     if explore == 'random':
         # random search over the objective function
         for _ in range(round(ss.size() * resolution)):
@@ -372,13 +386,16 @@ def visualize_searchspace_2D(explore="grid", resolution=0.15):
         # grid search over the objective function
         to_visit = round(ss.size() * resolution)
         step_size = ss.size() // to_visit
+        print(ss.size())
+        print(to_visit)
+        print(step_size)
         for i in range(to_visit):
             index = i * step_size
             x = ss.search_space[index]
             x = evaluate_objective_function(x)
 
     # normalize
-    valid_obs = list(x.observation for x in ss.search_space if x.valid_observation)
+    valid_obs = list(x.observation for x in fully_explored_ss.search_space if x.valid_observation)
     obs_min = np.nanmin(valid_obs)
     obs_max = np.nanmax(valid_obs)
     for x in ss.search_space:
@@ -398,10 +415,67 @@ def visualize_searchspace_2D(explore="grid", resolution=0.15):
         extent = [0, max(x_params) - min(x_params), 0, max(y_params) - min(y_params)]
     plt.imshow(observations, extent=extent, cmap=current_cmap, interpolation='nearest')
     cb = plt.colorbar()
-    cb.set_label('Gold content')
-    plt.xlabel('X parameter (meters)')
-    plt.ylabel('Y parameter (meters)')
+    cb.set_label('Gold content (normalized)')
+    plt.xlabel('x parameter (kilometers)')
+    plt.ylabel('y parameter (kilometers)')
     plt.show()
+
+
+def visualize_searchspace_2D_exploration_animated(acq_func=af_expected_improvement, max_evaluations=-1, save=False):
+    """ Visualize the search space and objective function """
+    # brute-force the objective function
+    fully_explored_ss = SearchSpace(parameters)
+    for x in fully_explored_ss.search_space:
+        x = evaluate_objective_function(x)
+    if max_evaluations < 0:
+        max_evaluations = fully_explored_ss.size() - 1
+
+    # normalize
+    valid_obs = list(x.observation for x in fully_explored_ss.search_space if x.valid_observation)
+    obs_min = np.nanmin(valid_obs)
+    obs_max = np.nanmax(valid_obs)
+
+    # prepare search space to be searched
+    ss = SearchSpace(parameters)
+    observations = ss.search_space_grid_observations()
+    model = SurrogateModel(ss, acq_func)
+
+    # visualize
+    fig, axes = plt.subplots()
+    current_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["green", "silver", "slategrey", "gold"])
+    current_cmap.set_bad(color='darkred')
+    current_cmap.set_under(color='white')
+    x_params = ss.parameters['x']
+    y_params = ss.parameters['y']
+    extent = [min(x_params), max(x_params), min(y_params), max(y_params)]
+    # change x and y axis to be positive
+    if min(x_params) < 0 or min(y_params) < 0:
+        extent = [0, max(x_params) - min(x_params), 0, max(y_params) - min(y_params)]
+    plot = plt.imshow(observations, extent=extent, cmap=current_cmap, interpolation='nearest')
+
+    def animation_init():
+        plt.clim(0, 1)
+        cb = plt.colorbar()
+        cb.set_label('Gold content (normalized)')
+        plt.xlabel('x parameter (kilometers)')
+        plt.ylabel('y parameter (kilometers)')
+        return plot,
+
+    def update(frame_number):
+        # apply bayesian optimization
+        if frame_number % 10 == 0:
+            print(frame_number)
+        _, _, _ = model.do_next()
+        observations = ss.search_space_grid_observations_normalized(obs_min, obs_max)
+        plot.set_data(observations)
+        # print("After {}: ".format(frame_number))
+        return plot,
+
+    animation = FuncAnimation(fig, update, frames=max_evaluations, interval=100, init_func=animation_init, blit=False, repeat=False)
+    if save:
+        animation.save('animation_2d_exploration.gif', writer='imagemagick', fps=5)
+    else:
+        plt.show()
 
 
 def visualize():
@@ -445,7 +519,7 @@ def visualize():
     # # scatter_matrix(data, alpha=0.2, figsize=(6, 6), diagonal='kde')
 
 
-def visualize_animated(acq_func=af_expected_improvement, plot_acquisition_values=True, max_evaluations=100):
+def visualize_animated(acq_func=af_expected_improvement, plot_acquisition_values=True, max_evaluations=500, save=False):
     """ Visualize the objective function, surrogate model, distance to objective optimal, and acquisition function (optional) animated over time """
     if acq_func == af_random:
         plot_acquisition_values = False
@@ -490,6 +564,8 @@ def visualize_animated(acq_func=af_expected_improvement, plot_acquisition_values
         return line, dot, distance_over_time_line,
 
     def update(frame_number):
+        if frame_number % 10 == 0:
+            print(frame_number)
         # apply bayesian optimization
         _, candidate_index, list_acq_values = model.do_next()
         bo_mean, bo_std = model.predict()
@@ -508,24 +584,24 @@ def visualize_animated(acq_func=af_expected_improvement, plot_acquisition_values
         distance_over_time_line.set_data(range(1, frame_number + 2), distance_over_time_list)
         # visualize acquisition values if applicable
         if plot_acquisition_values:
-            max_acq_value = max(list_acq_values)
-            acq_func_line.set_data(range(len(list_acq_values)), list_acq_values)
-            acq_func_candidate_line.set_data([candidate_index], [0, max_acq_value])
-            ax_aqfunc.set_ylim(0, max_acq_value)
+            max_acq_value = np.nanmax(list_acq_values)
+            if not np.isnan(max_acq_value):
+                acq_func_line.set_data(range(len(list_acq_values)), list_acq_values)
+                acq_func_candidate_line.set_data([candidate_index], [0, max_acq_value])
+                ax_aqfunc.set_ylim(0, max_acq_value)
         return line, err, dot, distance_over_time_line,
 
-    _ = FuncAnimation(fig, update, frames=max_evaluations, interval=500, init_func=animation_init, blit=False, repeat=False)
-    ax_main.legend()
-    if plot_acquisition_values:
-        ax_aqfunc.legend()
-    plt.show()
+    animation = FuncAnimation(fig, update, frames=max_evaluations, interval=100, init_func=animation_init, blit=False, repeat=False)
+    if save:
+        animation.save('animation_bayesian_optimization.gif', writer='imagemagick', fps=1.5)
+    else:
+        plt.show()
 
 
-def visualize_af_performance(repeats=49, max_evaluations=30):
+def visualize_af_performance(repeats=7, max_evaluations=300):
     """ Visualize the performance of acquisition functions against the distance to the objective function """
     fig, ax = plt.subplots(figsize=(20, 10), num="N={} initial_samples={}".format(repeats, num_initial_samples))
-    acquisition_functions = [(af_probability_of_improvement, dict(explorationfactor=0.0)), (af_expected_improvement, dict(explorationfactor=0.0)),
-                             (af_random, None)]
+    acquisition_functions = [(af_probability_of_improvement, None), (af_expected_improvement, None), (af_random, None)]
     # acquisition_functions = [(af_probability_of_improvement, None), (af_probability_of_improvement, dict(explorationfactor=0.5)),
     #                          (af_expected_improvement, None), (af_expected_improvement, dict(explorationfactor=0.5)), (af_random, None)]
     ss = SearchSpace(parameters)
@@ -581,6 +657,7 @@ def visualize_af_performance(repeats=49, max_evaluations=30):
 
 
 # visualize()
-# visualize_animated()
-# visualize_af_performance()
-visualize_searchspace_2D()
+# visualize_animated(save=True)
+visualize_af_performance()
+# visualize_searchspace_2D()
+# visualize_searchspace_2D_exploration_animated()

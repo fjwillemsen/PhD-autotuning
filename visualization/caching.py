@@ -41,6 +41,9 @@ class CachedObject():
     def write(self):
         return CacheInterface.write(self.obj)
 
+    def delete(self):
+        return CacheInterface.delete(self.kernel_name, self.device_name)
+
     # def build_strategy_index(self):
     #     index = dict()
     #     for i, strategy in enumerate(self.obj['strategies']):
@@ -114,3 +117,8 @@ class CacheInterface:
         # serialized = json.dumps(cached_object, cls=NumpyEncoder)
         with open(filename, 'w') as json_file:
             json.dump(cached_object, json_file, cls=NumpyEncoder)
+
+    def delete(kernel_name: str, device_name: str) -> bool:
+        import os
+        filename = CacheInterface.file_name(kernel_name, device_name)
+        os.remove(filename)
