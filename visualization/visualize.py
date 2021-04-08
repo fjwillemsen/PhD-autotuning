@@ -18,8 +18,16 @@ def change_dir(dir: str):
 class StatisticalData():
     """ Object that captures all statistical data and functions to visualize, plots have possible metrics 'GFLOP/s' or 'time' """
 
-    metric_displayname = dict({
-        'time': 'Time in seconds',
+    x_metric_displayname = dict({
+        'num_evals': 'Number of evaluations used',
+        'execution_time': 'Evaluation time taken in miliseconds',
+        'compile_time': 'Average compile time in miliseconds',
+        'strategy_time': 'Average time taken by strategy in miliseconds',
+        'total_time': 'Average total time taken in miliseconds',
+    })
+
+    y_metric_displayname = dict({
+        'time': 'Best found time in miliseconds',
         'GFLOP/s': 'GFLOP/s',
     })
 
@@ -31,7 +39,7 @@ class StatisticalData():
         # setup the strategies (beware that the options determine the maximum number of iterations, so setting this lower than the num_of_evaluations causes problems)
         default_number_of_repeats = 8
         # default_number_of_evaluations = np.array([25, 50, 75, 100, 125, 150, 175, 200]).astype(int)
-        default_number_of_evaluations = np.array([25, 50]).astype(int)
+        default_number_of_evaluations = np.array([5, 10, 15, 20, 25, 50, 75, 100]).astype(int)
         self.strategies = {
         # 'brute_force': {
         #     'name': 'brute_force',
@@ -40,22 +48,24 @@ class StatisticalData():
         #     'repeats': 1,
         #     'options': {},
         # },
-        # 'random_sample': {
-        #     'name': 'random_sample',
-        #     'display_name': 'Random Sample',
-        #     'nums_of_evaluations': default_number_of_evaluations,
-        #     'repeats': 20,
-        #     'options': {
-        #         'fraction': 0.1
-        #     }
-        # },
-        # 'genetic_algorithm': {
-        #     'name': 'genetic_algorithm',
-        #     'display_name': 'Genetic Algorithm',
-        #     'nums_of_evaluations': default_number_of_evaluations,
-        #     'repeats': default_number_of_repeats,
-        #     'options': {}
-        # },
+            'random_sample': {
+                'name': 'random_sample',
+                'display_name': 'Random Sample',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': 20,
+                'options': {
+                    'fraction': 0.1
+                }
+            },
+            'genetic_algorithm': {
+                'name': 'genetic_algorithm',
+                'display_name': 'Genetic Algorithm',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': default_number_of_repeats,
+                'options': {
+                    'maxiter': max(default_number_of_evaluations),
+                }
+            },
         # 'firefly': {
         #     'name': 'firefly_algorithm',
         #     'display_name': 'Firefly Algorithm',
@@ -74,11 +84,20 @@ class StatisticalData():
                 'name': 'bayes_opt',
                 'display_name': 'Bayesian Optimization',
                 'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': 1,
+                'repeats': 3,
                 'options': {
                     'maxiter': max(default_number_of_evaluations),
                 },
-            }
+            },
+        # 'bayes_opt_old': {
+        #     'name': 'bayes_opt_old',
+        #     'display_name': 'Bayesian Optimization (old)',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': 3,
+        #     'options': {
+        #         'maxiter': max(default_number_of_evaluations),
+        #     },
+        # }
         }
 
         self.collect_data()
@@ -175,8 +194,8 @@ class StatisticalData():
             self.cache.set_strategy(deepcopy(strategy), results_to_write)
             print("")
 
-    def plot_strategies_errorbar(self, metric='GFLOP/s', shaded=True):
-        """ Plots all strategies with errorbars, shaded plots a shaded error region instead of error bars """
+    def plot_strategies_errorbar(self, x_metric='num_evals', y_metric='GFLOP/s', shaded=True):
+        """ Plots all strategies with errorbars, shaded plots a shaded error region instead of error bars. Y-axis and X-axis metrics can be chosen. """
         for strategy in self.strategies.values():
 
             # must use cached data written by collect_data() earlier
@@ -184,26 +203,42 @@ class StatisticalData():
             cached_data = self.cache.get_strategy_results(strategy['name'], strategy['options'], strategy['repeats'], expected_results)
             if cached_data is not None:
                 results = cached_data['results']['results_per_number_of_evaluations']
-                actual_num_evals = np.array([])
                 perf = np.array([])
                 perf_error = np.array([])
+                actual_num_evals = np.array([])
+                cumulative_execution_time = np.array([])
                 for key in results.keys():
                     result = results[key]
+                    # calculate y axis
+                    perf = np.append(perf, result['mean_' + y_metric])
+                    perf_error = np.append(perf_error, result['err_' + y_metric])
+                    # calculate x axis
                     actual_num_evals = np.append(actual_num_evals, result['mean_actual_num_evals'])
-                    perf = np.append(perf, result['mean_' + metric])
-                    perf_error = np.append(perf_error, result['err_' + metric])
-                # add to the plot
+                    cumulative_execution_time = np.append(
+                        cumulative_execution_time,
+                        result['mean_time'] if len(cumulative_execution_time) == 0 else cumulative_execution_time[-1] + result['mean_time'])
+                # set x axis
+                x_axis = actual_num_evals
+                if x_metric == 'execution_time':
+                    x_axis = cumulative_execution_time
+                elif x_metric == 'strategy_time':
+                    raise ValueError("Not yet implemented")
+                elif x_metric == 'compile_time':
+                    raise ValueError("Not yet implemented")
+                elif x_metric == 'total_time':
+                    x_axis = cumulative_execution_time
+                # plot and add standard deviation to the plot
                 if shaded:
-                    plt.plot(actual_num_evals, perf, marker='o', linestyle='--', label=strategy['display_name'])
-                    plt.fill_between(actual_num_evals, perf - perf_error, perf + perf_error, alpha=0.2, antialiased=True)
+                    plt.plot(x_axis, perf, marker='o', linestyle='--', label=strategy['display_name'])
+                    plt.fill_between(x_axis, perf - perf_error, perf + perf_error, alpha=0.2, antialiased=True)
                 else:
-                    plt.errorbar(actual_num_evals, perf, perf_error, marker='o', linestyle='--', label=strategy['display_name'])
+                    plt.errorbar(x_axis, perf, perf_error, marker='o', linestyle='--', label=strategy['display_name'])
             else:
                 raise ValueError("Strategy {} not in cache, make sure collect_data() has ran first".format(strategy['display_name']))
 
         # plot setup
-        plt.xlabel("Number of evaluations required")
-        plt.ylabel(self.metric_displayname[metric])
+        plt.xlabel(self.x_metric_displayname[x_metric])
+        plt.ylabel(self.y_metric_displayname[y_metric])
         plt.legend()
         plt.show()
 
@@ -216,10 +251,12 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         kernel_name = sys.argv[1] or None
         device_name = sys.argv[2] or None
-        change_dir("../cached_runs")
+        # change_dir("../cached_runs")
+        change_dir("../kernel_tuner_simulation")
         kernel = importlib.import_module(kernel_name)
         stats = StatisticalData(kernel, kernel_name, device_name=device_name)
-        stats.plot_strategies_errorbar(metric='time', shaded=True)
-        stats.cache.delete()
+        # stats.cache.delete()
+        stats.plot_strategies_errorbar(x_metric='execution_time', y_metric='time', shaded=True)
+        # stats.cache.delete()
     else:
         raise ValueError("Bad arguments, expected: visualize.py [kernel name] [device name]")
