@@ -24,15 +24,15 @@ from sklearn.gaussian_process.kernels import ConstantKernel, RBF
 #     'y': np.linspace(-1.5, 1.5, num=40),
 # }
 
-# parameters = {
-#     'x': np.linspace(-10, 0, num=100),
-#     'y': np.linspace(-6.5, 0, num=100),
-# }
-
 parameters = {
-    'x': np.linspace(-2 * np.pi, 2 * np.pi, num=50),
-    'y': np.linspace(-2 * np.pi, 2 * np.pi, num=50),
+    'x': np.linspace(-10, 0, num=100),
+    'y': np.linspace(-6.5, 0, num=100),
 }
+
+# parameters = {
+#     'x': np.linspace(-2 * np.pi, 2 * np.pi, num=50),
+#     'y': np.linspace(-2 * np.pi, 2 * np.pi, num=50),
+# }
 
 num_initial_samples = 5
 
@@ -207,10 +207,10 @@ def evaluate_objective_function(x: ParameterConfig) -> ParameterConfig:
     # value = np.NaN if (x_i**2 + y_i**2) > 2 else ((1 - x_i)**2 + 100 * (y_i - x_i**2)**2) + noise
 
     # Mishra's bird function
-    value = sin(x_i) * np.exp((1 - cos(y_i))**2) + cos(y_i) * np.exp((1 - sin(x_i))**2) + (x_i - y_i)**2
+    # value = sin(x_i) * np.exp((1 - cos(y_i))**2) + cos(y_i) * np.exp((1 - sin(x_i))**2) + (x_i - y_i)**2
 
     # Mishra's bird function (constrained)
-    # value = np.NaN if (x_i + 5)**2 + (y_i + 5)**2 < 25 else sin(x_i) * np.exp((1 - cos(y_i))**2) + cos(y_i) * np.exp((1 - sin(x_i))**2) + (x_i - y_i)**2
+    value = np.NaN if (x_i + 5)**2 + (y_i + 5)**2 < 25 else sin(x_i) * np.exp((1 - cos(y_i))**2) + cos(y_i) * np.exp((1 - sin(x_i))**2) + (x_i - y_i)**2
 
     # value = (x_i**2 * sin(5 * pi * x_i)**6.0) + noise
     # value = np.NaN if x_i % 10 == 0 else 5 + 0.2 * sin(y_i) + 2 * cos(sqrt(x_i)) + noise

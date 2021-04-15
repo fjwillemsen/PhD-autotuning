@@ -7,6 +7,7 @@ import progressbar
 import time as python_time
 
 import importlib
+import warnings
 import os
 import sys
 
@@ -39,9 +40,10 @@ class StatisticalData():
         self.simulation_mode = simulation_mode
 
         # setup the strategies (beware that the options determine the maximum number of iterations, so setting this lower than the num_of_evaluations causes problems)
-        default_number_of_repeats = 8
+        default_number_of_repeats = 7
         # default_number_of_evaluations = np.array([25, 50, 75, 100, 125, 150, 175, 200]).astype(int)
-        default_number_of_evaluations = np.array([5, 10, 15, 20, 25, 50, 75, 100]).astype(int)
+        # default_number_of_evaluations = np.array([5, 10, 15, 20, 25, 50, 75, 100]).astype(int)
+        default_number_of_evaluations = np.array([5, 10, 15, 20, 25]).astype(int)
         self.strategies = {
         # 'brute_force': {
         #     'name': 'brute_force',
@@ -54,7 +56,7 @@ class StatisticalData():
                 'name': 'random_sample',
                 'display_name': 'Random Sample',
                 'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': 20,
+                'repeats': 50,
                 'options': {
                     'fraction': 0.1
                 }
@@ -82,20 +84,20 @@ class StatisticalData():
                 'repeats': default_number_of_repeats,
                 'options': {},
             },
-        # 'bayes_opt': {
-        #     'name': 'bayes_opt',
-        #     'display_name': 'Bayesian Optimization',
-        #     'nums_of_evaluations': default_number_of_evaluations,
-        #     'repeats': 3,
-        #     'options': {
-        #         'maxiter': max(default_number_of_evaluations),
-        #     },
-        # },
+            'bayes_opt': {
+                'name': 'bayes_opt',
+                'display_name': 'Bayesian Optimization',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': default_number_of_repeats,
+                'options': {
+                    'maxiter': max(default_number_of_evaluations),
+                },
+            },
         # 'bayes_opt_old': {
         #     'name': 'bayes_opt_old',
         #     'display_name': 'Bayesian Optimization (old)',
         #     'nums_of_evaluations': default_number_of_evaluations,
-        #     'repeats': 3,
+        #     'repeats': default_number_of_repeats,
         #     'options': {
         #         'maxiter': max(default_number_of_evaluations),
         #     },
@@ -159,8 +161,10 @@ class StatisticalData():
             for rep in progressbar.progressbar(range(strategy['repeats']), redirect_stdout=True):
                 # print(rep + 1, end=', ', flush=True)
                 total_start_time = python_time.perf_counter()
+                warnings.simplefilter("ignore", UserWarning)
                 res, _ = self.kernel.tune(device_name=self.device_name, strategy=strategy['name'], strategy_options=strategy['options'], verbose=False,
                                           quiet=True, simulation_mode=self.simulation_mode)
+                warnings.simplefilter("default", UserWarning)
                 total_end_time = python_time.perf_counter()
                 repeated_results.append(res)
                 total_time_ms = round((total_end_time - total_start_time) * 1000)
@@ -249,8 +253,9 @@ class StatisticalData():
                     cumulative_execution_time = np.append(cumulative_execution_time, result['mean_cumulative_execution_time'])
                     cumulative_total_time = np.append(cumulative_total_time, result['mean_cumulative_total_time'])
                 # set x axis
-                x_axis = actual_num_evals
-                if x_metric == 'strategy_time':
+                if x_metric == 'num_evals':
+                    x_axis = actual_num_evals
+                elif x_metric == 'strategy_time':
                     x_axis = cumulative_strategy_time
                 elif x_metric == 'compile_time':
                     x_axis = cumulative_compile_time
@@ -289,7 +294,7 @@ if __name__ == "__main__":
         kernel = importlib.import_module(kernel_name)
         stats = StatisticalData(kernel, kernel_name, device_name=device_name)
         # stats.cache.delete()
-        stats.plot_strategies_errorbar(x_metric='execution_time', y_metric='time', shaded=True)
+        stats.plot_strategies_errorbar(x_metric='num_evals', y_metric='time', shaded=True)
         # stats.cache.delete()
     else:
         raise ValueError("Bad arguments, expected: visualize.py [kernel name] [device name]")

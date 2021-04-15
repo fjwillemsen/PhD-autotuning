@@ -17,7 +17,7 @@ from kernel_tuner.interface import Options
 from kernel_tuner.runners import simulation
 
 
-# generates noise to be added to the functions
+# generates noise to be added to the function evaluations
 def noise() -> float:
     return 0.0
     # return randuni(-1, 1)
@@ -25,7 +25,7 @@ def noise() -> float:
 
 # Rosenbrock's function (constrained to a disk)
 def rosenbrock_constrained(x, y) -> float:
-    return np.NaN if (x**2 + y**2) > 2 else ((1 - x)**2 + 100 * (y - x**2)**2) + noise()
+    return 1e20 if (x**2 + y**2) > 2 else ((1 - x)**2 + 100 * (y - x**2)**2) + noise()
 
 
 # Mishra's bird function
@@ -35,14 +35,15 @@ def mishras_bird(x, y) -> float:
 
 # Mishra's bird function (constrained)
 def mishras_bird_constrained(x, y) -> float:
-    return np.NaN if (x + 5)**2 + (y + 5)**2 < 25 else (sin(x) * np.exp((1 - cos(y))**2) + cos(y) * np.exp((1 - sin(x))**2) + (x - y)**2) + noise()
+    return 1e20 if (x + 5)**2 + (y + 5)**2 >= 25 else (sin(x) * np.exp((1 - cos(y))**2) + cos(y) * np.exp((1 - sin(x))**2) + (x - y)**2) + noise()
 
 
 # helper function for a linear array with integers
-def param_space(start, end, num):
+def param_space(start, end, num) -> list:
     lin = np.linspace(start, end, num=num)
-    ints = np.arange(ceil(start), end + 1)
-    return np.unique(np.concatenate((lin, ints), 0))
+    ints = np.arange(int(ceil(start)), int(end) + 1, dtype=int)
+    combination = np.unique(np.concatenate((lin, ints), 0))
+    return combination.tolist()
 
 
 # evaluates the function with a parameter configuration, forwards arguments as unpacked kwargs
@@ -69,22 +70,23 @@ def npconverter(obj):
 
 # helper function to create the unique keystring from a parameter config
 def keystring(param_config: dict):
-    return ",".join([str(i) for i in param_config.values()])
+    values = list(int(i) if i.is_integer() else i for i in param_config.values())
+    return ",".join([str(i) for i in values])
 
 
 # set the function to evaluate
-function = mishras_bird
+function = mishras_bird_constrained
 # set the number of times observations must be repeated (will be aggregated to the mean)
 repeat_evals = 1
 
 # set the parameters to explore
 # params_to_eval = {
-#     'x': np.linspace(-2 * np.pi, 2 * np.pi, num=50).tolist(),
-#     'y': np.linspace(-2 * np.pi, 2 * np.pi, num=50).tolist(),
+#     'x': param_space(-1.5, 1.5, num=100),
+#     'y': param_space(-1.5, 1.5, num=100),
 # }
 params_to_eval = {
-    'x': param_space(-10, 0, num=1000).tolist(),
-    'y': param_space(-6.5, 0, num=1000).tolist(),
+    'x': param_space(-10, 0, num=100),
+    'y': param_space(-6.5, 0, num=100),
 }
 
 # set the required dummy variables
