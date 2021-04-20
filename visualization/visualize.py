@@ -42,11 +42,12 @@ class StatisticalData():
         # setup the strategies (beware that the options determine the maximum number of iterations, so setting this lower than the num_of_evaluations causes problems)
         default_number_of_repeats = 7
         # default_number_of_evaluations = np.array([25, 50, 75, 100, 125, 150, 175, 200]).astype(int)
-        # default_number_of_evaluations = np.array([5, 10, 15, 20, 25, 50, 75, 100]).astype(int)
-        default_number_of_evaluations = np.array([5, 10, 15, 20, 25]).astype(int)
+        default_number_of_evaluations = np.array([5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100]).astype(int)
+        # default_number_of_evaluations = np.array([5, 10, 15, 20, 25]).astype(int)
         self.strategies = {
         # 'brute_force': {
         #     'name': 'brute_force',
+        #     'strategy': 'brute_force',
         #     'display_name': 'Brute Force',
         #     'nums_of_evaluations': np.array([]).astype(int),
         #     'repeats': 1,
@@ -54,54 +55,96 @@ class StatisticalData():
         # },
             'random_sample': {
                 'name': 'random_sample',
+                'strategy': 'random_sample',
                 'display_name': 'Random Sample',
                 'nums_of_evaluations': default_number_of_evaluations,
                 'repeats': 50,
                 'options': {
-                    'fraction': 0.1
+                    'fraction': 0.02
                 }
             },
-            'genetic_algorithm': {
-                'name': 'genetic_algorithm',
-                'display_name': 'Genetic Algorithm',
-                'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': default_number_of_repeats,
-                'options': {
-                    'maxiter': max(default_number_of_evaluations),
-                }
-            },
-            'firefly': {
-                'name': 'firefly_algorithm',
-                'display_name': 'Firefly Algorithm',
-                'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': default_number_of_repeats,
-                'options': {},
-            },
-            'pso': {
-                'name': 'pso',
-                'display_name': 'Particle Swarm Optimization',
-                'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': default_number_of_repeats,
-                'options': {},
-            },
-            'bayes_opt': {
-                'name': 'bayes_opt',
-                'display_name': 'Bayesian Optimization',
+        # 'genetic_algorithm': {
+        #     'name': 'genetic_algorithm',
+        #     'strategy': 'genetic_algorithm',
+        #     'display_name': 'Genetic Algorithm',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': default_number_of_repeats,
+        #     'options': {
+        #         'maxiter': max(default_number_of_evaluations),
+        #     }
+        # },
+        #     'firefly': {
+        #         'name': 'firefly_algorithm',
+        #         'strategy': 'firefly_algorithm',
+        #         'display_name': 'Firefly Algorithm',
+        #         'nums_of_evaluations': default_number_of_evaluations,
+        #         'repeats': default_number_of_repeats,
+        #         'options': {},
+        #     },
+        # 'pso': {
+        #     'name': 'pso',
+        #     'strategy': 'strategy',
+        #     'display_name': 'Particle Swarm Optimization',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': default_number_of_repeats,
+        #     'options': {},
+        # },
+            'bayes_opt_lhs': {
+                'name': 'bayes_opt_lhs',
+                'strategy': 'bayes_opt',
+                'display_name': 'Bayesian Optimization LHS',
                 'nums_of_evaluations': default_number_of_evaluations,
                 'repeats': default_number_of_repeats,
                 'options': {
                     'maxiter': max(default_number_of_evaluations),
                 },
             },
-        # 'bayes_opt_old': {
-        #     'name': 'bayes_opt_old',
-        #     'display_name': 'Bayesian Optimization (old)',
+            'bayes_opt_lhs_maximin_1000': {
+                'name': 'bayes_opt_lhs_maximin_1000',
+                'strategy': 'bayes_opt',
+                'display_name': 'Bayesian Optimization LHS maximin 1000',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': default_number_of_repeats,
+                'options': {
+                    'maxiter': max(default_number_of_evaluations),
+                    'samplingcriterion': 'maximin',
+                    'samplingiterations': 1000,
+                },
+            },
+            'bayes_opt_lhs_maximin_10000': {
+                'name': 'bayes_opt_lhs_maximin_10000',
+                'strategy': 'bayes_opt',
+                'display_name': 'Bayesian Optimization LHS maximin 10.000',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': default_number_of_repeats,
+                'options': {
+                    'maxiter': max(default_number_of_evaluations),
+                    'samplingcriterion': 'maximin',
+                    'samplingiterations': 10000,
+                },
+            },
+            'bayes_opt_random': {
+                'name': 'bayes_opt_random',
+                'strategy': 'bayes_opt',
+                'display_name': 'Bayesian Optimization RS',
+                'nums_of_evaluations': default_number_of_evaluations,
+                'repeats': default_number_of_repeats,
+                'options': {
+                    'maxiter': max(default_number_of_evaluations),
+                    'samplingmethod': 'random',
+                },
+            },
+        # 'bayes_opt': {
+        #     'name': 'bayes_opt_poi',
+        #     'strategy': 'bayes_opt',
+        #     'display_name': 'Bayesian Optimization POI',
         #     'nums_of_evaluations': default_number_of_evaluations,
         #     'repeats': default_number_of_repeats,
         #     'options': {
         #         'maxiter': max(default_number_of_evaluations),
+        #         'method': 'poi',
         #     },
-        # }
+        # },
         }
 
         self.collect_data()
@@ -162,7 +205,7 @@ class StatisticalData():
                 # print(rep + 1, end=', ', flush=True)
                 total_start_time = python_time.perf_counter()
                 warnings.simplefilter("ignore", UserWarning)
-                res, _ = self.kernel.tune(device_name=self.device_name, strategy=strategy['name'], strategy_options=strategy['options'], verbose=False,
+                res, _ = self.kernel.tune(device_name=self.device_name, strategy=strategy['strategy'], strategy_options=strategy['options'], verbose=False,
                                           quiet=True, simulation_mode=self.simulation_mode)
                 warnings.simplefilter("default", UserWarning)
                 total_end_time = python_time.perf_counter()
@@ -243,16 +286,16 @@ class StatisticalData():
                 cumulative_total_time = np.array([])
                 for key in results.keys():
                     result = results[key]
-                    # calculate y axis
+                    # calculate y axis data
                     perf = np.append(perf, result['mean_' + y_metric])
                     perf_error = np.append(perf_error, result['err_' + y_metric])
-                    # calculate x axis
+                    # calculate x axis data
                     actual_num_evals = np.append(actual_num_evals, result['mean_actual_num_evals'])
                     cumulative_strategy_time = np.append(cumulative_strategy_time, result['mean_cumulative_strategy_time'])
                     cumulative_compile_time = np.append(cumulative_compile_time, result['mean_cumulative_compile_time'])
                     cumulative_execution_time = np.append(cumulative_execution_time, result['mean_cumulative_execution_time'])
                     cumulative_total_time = np.append(cumulative_total_time, result['mean_cumulative_total_time'])
-                # set x axis
+                # set x axis data
                 if x_metric == 'num_evals':
                     x_axis = actual_num_evals
                 elif x_metric == 'strategy_time':
