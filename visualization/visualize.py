@@ -42,8 +42,10 @@ class StatisticalData():
         # setup the strategies (beware that the options determine the maximum number of iterations, so setting this lower than the num_of_evaluations causes problems)
         default_number_of_repeats = 7
         # default_number_of_evaluations = np.array([25, 50, 75, 100, 125, 150, 175, 200]).astype(int)
-        default_number_of_evaluations = np.array([5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100]).astype(int)
-        # default_number_of_evaluations = np.array([5, 10, 15, 20, 25]).astype(int)
+        # default_number_of_evaluations = np.array([5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100]).astype(int)
+        default_number_of_evaluations = np.array(range(1, 301, 25)).astype(int)
+        self.min_num_evals = min(default_number_of_evaluations)
+        self.max_num_evals = max(default_number_of_evaluations)
         self.strategies = {
         # 'brute_force': {
         #     'name': 'brute_force',
@@ -58,9 +60,9 @@ class StatisticalData():
                 'strategy': 'random_sample',
                 'display_name': 'Random Sample',
                 'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': 50,
+                'repeats': 200,
                 'options': {
-                    'fraction': 0.02
+                    'fraction': 0.1
                 }
             },
         # 'genetic_algorithm': {
@@ -70,17 +72,17 @@ class StatisticalData():
         #     'nums_of_evaluations': default_number_of_evaluations,
         #     'repeats': default_number_of_repeats,
         #     'options': {
-        #         'maxiter': max(default_number_of_evaluations),
+        #         'maxiter': self.max_num_evals,
         #     }
         # },
-        #     'firefly': {
-        #         'name': 'firefly_algorithm',
-        #         'strategy': 'firefly_algorithm',
-        #         'display_name': 'Firefly Algorithm',
-        #         'nums_of_evaluations': default_number_of_evaluations,
-        #         'repeats': default_number_of_repeats,
-        #         'options': {},
-        #     },
+        # 'firefly': {
+        #     'name': 'firefly_algorithm',
+        #     'strategy': 'firefly_algorithm',
+        #     'display_name': 'Firefly Algorithm',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': default_number_of_repeats,
+        #     'options': {},
+        # },
         # 'pso': {
         #     'name': 'pso',
         #     'strategy': 'strategy',
@@ -89,51 +91,73 @@ class StatisticalData():
         #     'repeats': default_number_of_repeats,
         #     'options': {},
         # },
-            'bayes_opt_lhs': {
-                'name': 'bayes_opt_lhs',
+            'bayes_opt': {
+                'name': 'bayes_opt',
                 'strategy': 'bayes_opt',
-                'display_name': 'Bayesian Optimization LHS',
+                'display_name': 'Bayesian Optimization',
                 'nums_of_evaluations': default_number_of_evaluations,
                 'repeats': default_number_of_repeats,
                 'options': {
-                    'maxiter': max(default_number_of_evaluations),
+                    'maxiter': self.max_num_evals,
                 },
             },
-            'bayes_opt_lhs_maximin_1000': {
-                'name': 'bayes_opt_lhs_maximin_1000',
+            'bayes_opt_numacq': {
+                'name': 'bayes_opt_numacq',
                 'strategy': 'bayes_opt',
-                'display_name': 'Bayesian Optimization LHS maximin 1000',
+                'display_name': 'Bayesian Optimization Multi-AQ',
                 'nums_of_evaluations': default_number_of_evaluations,
                 'repeats': default_number_of_repeats,
                 'options': {
-                    'maxiter': max(default_number_of_evaluations),
-                    'samplingcriterion': 'maximin',
-                    'samplingiterations': 1000,
+                    'maxiter': self.max_num_evals,
+                    'numacquisition': 3,
                 },
             },
+        # 'bayes_opt_lhs_ucb': {
+        #     'name': 'bayes_opt_lhs_ucb',
+        #     'strategy': 'bayes_opt',
+        #     'display_name': 'Bayesian Optimization UCB',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': default_number_of_repeats,
+        #     'options': {
+        #         'maxiter': self.max_num_evals,
+        #         'method': 'ucb',
+        #     },
+        # },
+        # 'bayes_opt_lhs_maximin_1000': {
+        #     'name': 'bayes_opt_lhs_maximin_1000',
+        #     'strategy': 'bayes_opt',
+        #     'display_name': 'Bayesian Optimization LHS maximin 1000',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': default_number_of_repeats,
+        #     'options': {
+        #         'maxiter': self.max_num_evals,
+        #         'samplingcriterion': 'maximin',
+        #         'samplingiterations': 1000,
+        #     },
+        # },
             'bayes_opt_lhs_maximin_10000': {
                 'name': 'bayes_opt_lhs_maximin_10000',
                 'strategy': 'bayes_opt',
-                'display_name': 'Bayesian Optimization LHS maximin 10.000',
+                'display_name': 'Bayesian Optimization maximin',
                 'nums_of_evaluations': default_number_of_evaluations,
                 'repeats': default_number_of_repeats,
                 'options': {
-                    'maxiter': max(default_number_of_evaluations),
+                    'maxiter': self.max_num_evals,
                     'samplingcriterion': 'maximin',
                     'samplingiterations': 10000,
                 },
             },
-            'bayes_opt_random': {
-                'name': 'bayes_opt_random',
-                'strategy': 'bayes_opt',
-                'display_name': 'Bayesian Optimization RS',
-                'nums_of_evaluations': default_number_of_evaluations,
-                'repeats': default_number_of_repeats,
-                'options': {
-                    'maxiter': max(default_number_of_evaluations),
-                    'samplingmethod': 'random',
-                },
-            },
+        # 'bayes_opt_random': {
+        #     'name': 'bayes_opt_random',
+        #     'strategy': 'bayes_opt',
+        #     'display_name': 'Bayesian Optimization RS',
+        #     'nums_of_evaluations': default_number_of_evaluations,
+        #     'repeats': default_number_of_repeats,
+        #     'options': {
+        #         'maxiter': self.max_num_evals,
+        #         'samplingmethod': 'random',
+        #     },
+        # },
         # 'bayes_opt': {
         #     'name': 'bayes_opt_poi',
         #     'strategy': 'bayes_opt',
@@ -141,7 +165,7 @@ class StatisticalData():
         #     'nums_of_evaluations': default_number_of_evaluations,
         #     'repeats': default_number_of_repeats,
         #     'options': {
-        #         'maxiter': max(default_number_of_evaluations),
+        #         'maxiter': self.max_num_evals,
         #         'method': 'poi',
         #     },
         # },
@@ -221,7 +245,7 @@ class StatisticalData():
             total_time_mean = np.mean(total_time_results)
             total_time_std = np.std(total_time_results)
             total_time_mean_per_eval = total_time_mean / nums_of_evaluations[-1]
-            print("Total time: {} ms, std {}".format(round(total_time_mean, 3), round(total_time_std, 3)))
+            print("Total mean time: {} ms, std {}".format(round(total_time_mean, 3), round(total_time_std, 3)))
 
             # for every number of evaluations specified, find the best and collect details on it
             for res in repeated_results:
@@ -268,8 +292,12 @@ class StatisticalData():
             self.cache.set_strategy(deepcopy(strategy), results_to_write)
             # print("")
 
-    def plot_strategies_errorbar(self, x_metric='num_evals', y_metric='GFLOP/s', shaded=True):
+    def plot_strategies_errorbar(self, absolute_optimum: float, x_metric='num_evals', y_metric='GFLOP/s', shaded=True):
         """ Plots all strategies with errorbars, shaded plots a shaded error region instead of error bars. Y-axis and X-axis metrics can be chosen. """
+        if absolute_optimum is not None:
+            plt.plot([self.min_num_evals, self.max_num_evals], [absolute_optimum, absolute_optimum], linestyle='-',
+                     label="True optimum {}".format(round(absolute_optimum, 3)))
+
         for strategy in self.strategies.values():
 
             # must use cached data written by collect_data() earlier
@@ -325,19 +353,20 @@ class StatisticalData():
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 1 and len(sys.argv) != 3:
-        print("Usage: visualize.py [kernel name] [device name]")
+    if len(sys.argv) != 3 and len(sys.argv) != 4:
+        print("Usage: visualize.py [kernel name] [device name] [absolute optimum (optional)]")
         exit(1)
 
     if len(sys.argv) > 1:
-        kernel_name = sys.argv[1] or None
-        device_name = sys.argv[2] or None
+        kernel_name = sys.argv[1]
+        device_name = sys.argv[2]
+        absolute_optimum = float(sys.argv[3]) if len(sys.argv) == 4 else None
         # change_dir("../cached_runs")
         change_dir("../kernel_tuner_simulation")
         kernel = importlib.import_module(kernel_name)
         stats = StatisticalData(kernel, kernel_name, device_name=device_name)
         # stats.cache.delete()
-        stats.plot_strategies_errorbar(x_metric='num_evals', y_metric='time', shaded=True)
+        stats.plot_strategies_errorbar(absolute_optimum, x_metric='num_evals', y_metric='time', shaded=True)
         # stats.cache.delete()
     else:
-        raise ValueError("Bad arguments, expected: visualize.py [kernel name] [device name]")
+        raise ValueError("Bad arguments, expected: visualize.py [kernel name] [device name] [absolute optimum (optional)]")
