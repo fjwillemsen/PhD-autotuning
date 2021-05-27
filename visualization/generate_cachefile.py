@@ -1,4 +1,6 @@
-""" Generate a cachefile using a synthetic function """
+""" Generate a cachefile using a synthetic function
+    usage: python generate_cachefile.py
+"""
 
 import itertools
 import time
@@ -25,7 +27,9 @@ def noise() -> float:
 
 # Rosenbrock's function (constrained to a disk)
 def rosenbrock_constrained(x, y) -> float:
-    return 1e20 if (x**2 + y**2) > 2 else ((1 - x)**2 + 100 * (y - x**2)**2) + noise()
+    if (x**2 + y**2) > 2:
+        return 1e20
+    return ((1 - x)**2 + 100 * (y - x**2)**2) + noise()
 
 
 # Mishra's bird function
@@ -33,9 +37,18 @@ def mishras_bird(x, y) -> float:
     return (sin(x) * np.exp((1 - cos(y))**2) + cos(y) * np.exp((1 - sin(x))**2) + (x - y)**2) + noise()
 
 
-# Mishra's bird function (constrained)
+# Mishra's bird function (constrained), minimum set to 0.0
 def mishras_bird_constrained(x, y) -> float:
-    return 1e20 if (x + 5)**2 + (y + 5)**2 >= 25 else (sin(x) * np.exp((1 - cos(y))**2) + cos(y) * np.exp((1 - sin(x))**2) + (x - y)**2) + noise()
+    if (x + 5)**2 + (y + 5)**2 >= 25:
+        return 1e20
+    return (sin(x) * np.exp((1 - cos(y))**2) + cos(y) * np.exp((1 - sin(x))**2) + (x - y)**2) + noise() + 106.7645367
+
+
+# Gomez and Levy function, minimum set to 0.0
+def gomez_levy(x, y) -> float:
+    if -np.sin(4 * np.pi * x) + 2 * np.sin(2 * np.pi * y)**2 > 1.5:
+        return 1e20
+    return (4 * x**2 - 2.1 * x**4 + (1 / 3) * x**6 + x * y - 4 * y**2 + 4 * y**4) + noise() + 1.031628453
 
 
 # helper function for a linear array with integers
@@ -70,7 +83,8 @@ def npconverter(obj):
 
 # helper function to create the unique keystring from a parameter config
 def keystring(param_config: dict):
-    values = list(int(i) if i.is_integer() else i for i in param_config.values())
+    # TODO change float(i) to int(i) if needed
+    values = list(float(i) if i.is_integer() else i for i in param_config.values())
     return ",".join([str(i) for i in values])
 
 
@@ -80,17 +94,25 @@ function = mishras_bird_constrained
 repeat_evals = 1
 
 # set the parameters to explore
+#    # Rosenbrock
 # params_to_eval = {
 #     'x': param_space(-1.5, 1.5, num=100),
 #     'y': param_space(-1.5, 1.5, num=100),
 # }
+# Mishra's bird
 params_to_eval = {
     'x': param_space(-10, 0, num=100),
     'y': param_space(-6.5, 0, num=100),
 }
+# # Gomez and Levy
+# params_to_eval = {
+#     'x': param_space(-1, 0.75, num=100),
+#     'y': param_space(-1, 1, num=100),
+# }
 
 # set the required dummy variables
 searchspace = cartesian_product(params_to_eval)
+# name = 'gomez_levy'
 name = 'mishras_bird_constrained'
 devname = 'generator'
 kernelname = name + '_kernel'
