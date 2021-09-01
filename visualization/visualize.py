@@ -1470,11 +1470,16 @@ class StatisticalData():
 
 if __name__ == "__main__":
     CLI = argparse.ArgumentParser()
-    CLI.add_argument("-kernels", nargs="*", type=str, help="List of kernel names to be visualized")
-    CLI.add_argument("-devices", nargs="*", type=str, default=["GTX_TITAN_X"], help="List of devices to be visualized")
+    CLI.add_argument("-kernels", nargs="*", type=str, help="List of kernel names to visualize")
+    CLI.add_argument("-devices", nargs="*", type=str, default=["GTX_TITAN_X"], help="List of devices to visualize")
     args = CLI.parse_args()
     kernel_names = args.kernels
     device_names = args.devices
+
+    if kernel_names is None:
+        raise ValueError("Invalid '-kernels' option. Run 'visualize.py -h' to read more about the options.")
+    if device_names is None:
+        raise ValueError("Invalid '-devices' option. Run 'visualize.py -h' to read more about the options.")
 
     devices = {
         'A100': {
