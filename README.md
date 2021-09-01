@@ -17,7 +17,7 @@ _This repository is Apache 2.0 licensed._
   
  3. Get to know Kernel Tuner **_[optional]_**
   - Initialize the [Kernel Tuner repository](https://github.com/benvanwerkhoven/kernel_tuner/tree/b54b1168532a22a25ec286eb72073bf7a424f3d3) and read the Read Me.
-  - Initialize and follow the [Kernel Tuner Tutorial](https://github.com/benvanwerkhoven/kernel_tuner_tutorial/tree/b9a7dbba44cbf31673436411dced85383aa44dac).
+  - If interested, follow the [Kernel Tuner Tutorial](https://github.com/benvanwerkhoven/kernel_tuner_tutorial/tree/b9a7dbba44cbf31673436411dced85383aa44dac).
 
 ## How to reproduce results
 1. Move into the `experiments` directory.
