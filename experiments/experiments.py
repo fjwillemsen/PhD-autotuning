@@ -143,7 +143,7 @@ def calculate_lower_upper_error(observations: list) -> Tuple[float, float]:
 
 
 class StatisticalData():
-    """ Object that captures all statistical data and functions to visualize, plots have possible metrics 'GFLOP/s' or 'time' """
+    """ Object that captures all statistical data and functions to experiment and visualize, plots have possible metrics 'GFLOP/s' or 'time' """
 
     x_metric_displayname = dict({
         'num_evals': 'Number of function evaluations used',
@@ -386,18 +386,6 @@ class StatisticalData():
                     'popsize': 80,
                 }
             },
-        # 'bayes_opt_ei_CV_reference': {
-        #     'name': 'bayes_opt_ei_CV_reference',
-        #     'strategy': 'bayes_opt',
-        #     'display_name': 'EI',
-        #     'bar_group': 'basic',
-        #     'nums_of_evaluations': [20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 220],
-        #     'repeats': 35,
-        #     'options': {
-        #         'max_fevals': 220,
-        #         'method': 'ei',
-        #     }
-        # },
             'bayes_opt_multi_reference': {
                 'name': 'bayes_opt_multi_reference',
                 'strategy': 'bayes_opt',
@@ -423,7 +411,7 @@ class StatisticalData():
                 }
             },
         }
-        self.strategies = compare_search_method_extended
+        self.strategies = compare_search_method
 
         # # adds ignore_cache to every strategy for a complete rerun
         # for key in self.strategies.keys():
@@ -1470,16 +1458,16 @@ class StatisticalData():
 
 if __name__ == "__main__":
     CLI = argparse.ArgumentParser()
-    CLI.add_argument("-kernels", nargs="*", type=str, help="List of kernel names to visualize")
-    CLI.add_argument("-devices", nargs="*", type=str, default=["GTX_TITAN_X"], help="List of devices to visualize")
+    CLI.add_argument("-kernels", nargs="*", type=str, help="List of kernel names to experiment")
+    CLI.add_argument("-devices", nargs="*", type=str, default=["GTX_TITAN_X"], help="List of devices to experiment")
     args = CLI.parse_args()
     kernel_names = args.kernels
     device_names = args.devices
 
     if kernel_names is None:
-        raise ValueError("Invalid '-kernels' option. Run 'visualize.py -h' to read more about the options.")
+        raise ValueError("Invalid '-kernels' option. Run 'experiments.py -h' to read more about the options.")
     if device_names is None:
-        raise ValueError("Invalid '-devices' option. Run 'visualize.py -h' to read more about the options.")
+        raise ValueError("Invalid '-devices' option. Run 'experiments.py -h' to read more about the options.")
 
     devices = {
         'A100': {
@@ -1583,20 +1571,20 @@ if __name__ == "__main__":
             for kernel_index in range(len(kernel_names)):
                 pass
                 # print(f"Plotting {kernel_names[kernel_index]}")
+                stats.plot_strategies_errorbar(kernel_index=kernel_index, x_metric='num_evals', y_metric='time', plot_errors=False)
                 # stats.plot_RMSE_barchart(kernel_indices=[kernel_index], log_scale=False)
-                # stats.plot_strategies_errorbar(kernel_index=kernel_index, x_metric='num_evals', y_metric='time', plot_errors=False)
                 # stats.surpasses(
                 #     kernel_index=kernel_index, surpassors=[
                 #         'extended_random_sample_rem_unique', 'extended_simulated_annealing_rem_unique', 'extended_mls_rem_unique',
                 #         'extended_genetic_algorithm_rem_unique'
                 #     ])
-                stats.surpasses(
-                    baselines=['bayes_opt_multi-advanced_reference'], kernel_index=kernel_index, surpassors=[
-                        'extended_random_sample_rem_unique', 'extended_simulated_annealing_rem_unique', 'extended_mls_rem_unique',
-                        'extended_genetic_algorithm_rem_unique'
-                    ])
+                # stats.surpasses(
+                #     baselines=['bayes_opt_multi-advanced_reference'], kernel_index=kernel_index, surpassors=[
+                #         'extended_random_sample_rem_unique', 'extended_simulated_annealing_rem_unique', 'extended_mls_rem_unique',
+                #         'extended_genetic_algorithm_rem_unique'
+                #     ])
             # stats.plot_harmonic_mean_ranking_of_groups(kernel_indices=range(len(kernel_names)))
-            # stats.plot_mean_deviation_factor(kernel_indices=range(len(kernel_names)))
+            stats.plot_mean_deviation_factor(kernel_indices=range(len(kernel_names)))
             # stats.plot_mean_deviation_factor_heatmap(kernel_indices=range(len(kernel_names)))
             # stats.plot_mean_deviation_factor_heatmap(kernel_indices=range(len(kernel_names)), swap_axes=False, xaxislabel='', yaxislabel='')
             # stats.cache.delete()
