@@ -105,7 +105,7 @@ class CacheInterface:
     """ Interface for cache filesystem interaction """
 
     def file_name(kernel_name: str, device_name: str) -> str:
-        return 'cached_plot_' + kernel_name + '_' + device_name + '.json'
+        return 'cached_visualizations/cached_plot_' + kernel_name + '_' + device_name + '.json'
 
     def read(kernel_name: str, device_name: str) -> dict:
         filename = CacheInterface.file_name(kernel_name, device_name)
