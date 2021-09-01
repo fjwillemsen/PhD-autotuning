@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/335266940.svg)](https://zenodo.org/badge/latestdoi/335266940)
+
 # Bayesian Optimization for auto-tuning GPU kernels
 Encompassing repository for software written or used, as well as data generated or used in the context of the prospecting paper "Bayesian Optimization for auto-tuning GPU kernels", specifically to comply with the Artifact Description and Artifact Evaluation under the SuperComputing 2021 reproducability initiative. 
 
