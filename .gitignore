@@ -1,3 +1,7 @@
+# Do not include data files
+cached_data_used/cached_visualizations/*
+experiments/profilings/*
+
 
 # Created by https://www.toptal.com/developers/gitignore/api/macos,linux,visualstudiocode,python
 # Edit at https://www.toptal.com/developers/gitignore?templates=macos,linux,visualstudiocode,python
