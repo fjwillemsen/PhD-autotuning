@@ -10,7 +10,7 @@ import numpy as np
 import kernel_tuner
 
 
-def tune(device_name, strategy="bayes_opt", strategy_options=None, verbose=True, quiet=False, simulation_mode=True):
+def tune(device_name, strategy="bayes_opt", strategy_options=None, verbose=False, quiet=True, simulation_mode=True):
 
     path = os.path.dirname(os.path.realpath(__file__)) + "/gemm/"
 

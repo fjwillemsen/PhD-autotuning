@@ -1,11 +1,12 @@
 import json
 import numpy as np
+from typing import Optional, Dict, Any
 
 
 class NumpyEncoder(json.JSONEncoder):
     """ JSON encoder for NumPy types, from https://www.programmersought.com/article/18271066028/ """
 
-    def default(self, obj):
+    def default(self, obj):    # pylint: disable=arguments-differ
         if isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64)):
             return int(obj)
         elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
@@ -19,6 +20,7 @@ class CachedObject():
     """ Class for managing cached results """
 
     def __init__(self, kernel_name: str, device_name: str, strategies: dict = None):
+
         try:
             cache = CacheInterface.read(kernel_name, device_name)
             # print("Cache with type: ", type(cache), ":\n ", cache)
@@ -27,12 +29,17 @@ class CachedObject():
             self.obj = cache
         except (FileNotFoundError, json.decoder.JSONDecodeError) as _:
             print("No cached visualization found, creating new cache")
+            # make the strategies a dict with the name as key for faster lookup
+            strategies_dict = dict()
+            for strategy in strategies:
+                strategies_dict[strategy['name']] = strategy
+
             self.kernel_name = kernel_name
             self.device_name = device_name
-            self.obj = {
+            self.obj: Dict[str, Any] = {
                 "kernel_name": kernel_name,
                 "device_name": device_name,
-                "strategies": strategies
+                "strategies": strategies_dict
             }
 
     def read(self):
@@ -43,12 +50,6 @@ class CachedObject():
 
     def delete(self):
         return CacheInterface.delete(self.kernel_name, self.device_name)
-
-    # def build_strategy_index(self):
-    #     index = dict()
-    #     for i, strategy in enumerate(self.obj['strategies']):
-    #         index[strategy['name']] = i
-    #     return index
 
     def has_strategy(self, strategy_name: str) -> bool:
         """ Checks whether the cache contains the strategy with matching parameter 'name' """
@@ -63,7 +64,7 @@ class CachedObject():
         return False
 
     def recursively_compare_dict_keys(self, dict_elem, compare_elem) -> bool:
-        """ Recursively go trough a dict to check whether the keys match """
+        """ Recursively go trough a dict to check whether the keys match, returns true if they match """
         if isinstance(dict_elem, list):
             for idx in range(min(len(dict_elem), len(compare_elem))):
                 if self.recursively_compare_dict_keys(dict_elem[idx], compare_elem[idx]) is False:
@@ -74,18 +75,18 @@ class CachedObject():
             return dict_elem.keys() == compare_elem.keys() and all(self.recursively_compare_dict_keys(dict_elem[key], compare_elem[key]) for key in dict_elem)
         return True
 
-    def get_strategy(self, strategy_name: str, options: dict, repeats: int):
+    def get_strategy(self, strategy_name: str, options: dict, repeats: int) -> Optional[dict]:
         """ Returns a strategy by matching the parameters, if it exists """
         if self.has_matching_strategy(strategy_name, options, repeats):
             return self.obj['strategies'][strategy_name]
         return None
 
-    def get_strategy_results(self, strategy_name: str, options: dict, repeats: int, expected_results: dict = None):
+    def get_strategy_results(self, strategy_name: str, options: dict, repeats: int, expected_results: dict = None) -> Optional[dict]:
         """ Checks whether the cache contains the expected results for the strategy and returns it if true """
         cached_data = self.get_strategy(strategy_name, options, repeats)
-        if cached_data is not None and 'results' in cached_data:
-            if expected_results is None or self.recursively_compare_dict_keys(cached_data['results'], expected_results):
-                return cached_data
+        if cached_data is not None and 'results' in cached_data and (expected_results is None
+                                                                     or self.recursively_compare_dict_keys(cached_data['results'], expected_results)):
+            return cached_data
         return None
 
     def set_strategy(self, strategy: dict(), results: dict()):
@@ -104,21 +105,24 @@ class CachedObject():
 class CacheInterface:
     """ Interface for cache filesystem interaction """
 
-    def file_name(kernel_name: str, device_name: str) -> str:
-        return 'cached_visualizations/cached_plot_' + kernel_name + '_' + device_name + '.json'
+    def file_name(kernel_name: str, device_name: str) -> str:    # pylint: disable=no-self-argument
+        """ Combine the variables into the target filename """
+        return f"cached_visualizations/cached_plot_{kernel_name}_{device_name}.json"
 
-    def read(kernel_name: str, device_name: str) -> dict:
+    def read(kernel_name: str, device_name: str) -> Dict[str, Any]:    # pylint: disable=no-self-argument
+        """ Read and parse a cachefile """
         filename = CacheInterface.file_name(kernel_name, device_name)
         with open(filename) as json_file:
             return json.load(json_file)
 
-    def write(cached_object: dict):
-        filename = CacheInterface.file_name(cached_object['kernel_name'], cached_object['device_name'])
-        # serialized = json.dumps(cached_object, cls=NumpyEncoder)
+    def write(cached_object: Dict[str, Any]):    # pylint: disable=no-self-argument
+        """ Serialize and write a cachefile """
+        filename = CacheInterface.file_name(cached_object['kernel_name'], cached_object['device_name'])    # pylint: disable=unsubscriptable-object
         with open(filename, 'w') as json_file:
             json.dump(cached_object, json_file, cls=NumpyEncoder)
 
-    def delete(kernel_name: str, device_name: str) -> bool:
+    def delete(kernel_name: str, device_name: str) -> bool:    # pylint: disable=no-self-argument
+        """ Delete a cachefile """
         import os
         filename = CacheInterface.file_name(kernel_name, device_name)
         os.remove(filename)

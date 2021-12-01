@@ -590,7 +590,7 @@ class StatisticalData():
         return cache
 
     def order_strategies(self, main_bar_group: str) -> list:
-        # order the strategies in the order we wish to have them plotted
+        """ Orders the strategies in the order we wish to have them plotted """
         strategies_ordered = [None] * len(self.strategies.values())
         index_first = 0
         index_last = len(strategies_ordered) - 1
