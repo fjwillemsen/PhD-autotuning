@@ -8,7 +8,7 @@ from collections import OrderedDict
 prog_name = "mishras_bird_constrained"
 
 
-def tune(device_name, strategy="bayes_opt", strategy_options=None, verbose=False, quiet=False, simulation_mode=True):
+def tune(device_name, strategy="bayes_opt_GPyTorch_lean", strategy_options=None, verbose=False, quiet=False, simulation_mode=True):
 
     #input dimensions and data
     x = 100

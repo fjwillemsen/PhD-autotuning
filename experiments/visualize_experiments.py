@@ -42,7 +42,7 @@ kernel_device_info = {
             },
         },
     },
-    'RTX_2070_Super': {
+    'RTX_2070_SUPER': {
         'name': 'RTX_2070_Super',
         'displayname': 'RTX 2070 Super',
         'kernels': {
@@ -94,6 +94,10 @@ kernel_device_info = {
                 'absolute_optimum': 0.0,
                 'y_axis_upper_limit': 0.27,
             },
+            'multimodal_sinewave': {
+                'absolute_optimum': -1.92,
+                'y_axis_upper_limit': -1.7,
+            }
         }
     }
 }
@@ -145,9 +149,9 @@ class Visualize():
                 print(f"  visualizing {kernel_name} on {gpu_name}")
 
                 # create the figure and plots
-                fig, axs = plt.subplots(ncols=2, figsize=(20, 10))    # if multiple subplots, pass the axis to the plot function with axs[0] etc.
+                fig, axs = plt.subplots(ncols=2, figsize=(15, 10))    # if multiple subplots, pass the axis to the plot function with axs[0] etc.
                 title = f"{kernel_name} on {gpu_name}"
-                fig.canvas.set_window_title(title)
+                fig.canvas.manager.set_window_title(title)
                 fig.suptitle(title)
 
                 # prefetch the cached strategy results

@@ -10,7 +10,7 @@ import numpy as np
 import kernel_tuner
 
 
-def tune(device_name, strategy="bayes_opt", strategy_options=None, verbose=False, quiet=True, simulation_mode=True):
+def tune(device_name, strategy="bayes_opt_GPyTorch_lean", strategy_options=None, verbose=False, quiet=True, simulation_mode=True):
 
     path = os.path.dirname(os.path.realpath(__file__)) + "/gemm/"
 
@@ -39,7 +39,6 @@ def tune(device_name, strategy="bayes_opt", strategy_options=None, verbose=False
     args = []
 
     tune_params = OrderedDict()
-
     tune_params["MWG"] = [16, 32, 64, 128]
     tune_params["NWG"] = [16, 32, 64, 128]
     tune_params["KWG"] = [32]

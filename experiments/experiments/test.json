@@ -6,7 +6,7 @@
     "GEMM"
   ],
   "GPUs": [
-    "RTX_2070_Super"
+    "RTX_2070_SUPER"
   ],
   "strategy_defaults": {
     "repeats": 35,

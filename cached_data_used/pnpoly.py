@@ -30,7 +30,7 @@ import json
 import logging
 
 
-def tune(device_name, strategy="bayes_opt", strategy_options=None, verbose=True, quiet=False, simulation_mode=True):
+def tune(device_name, strategy="bayes_opt_GPyTorch_lean", strategy_options=None, verbose=True, quiet=False, simulation_mode=True):
 
     #set the number of points and the number of vertices
     size = np.int32(2e7)

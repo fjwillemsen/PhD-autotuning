@@ -1,7 +1,7 @@
 """ Main experiments code """
 
 import argparse
-import importlib
+from importlib import import_module
 import json
 import os
 import sys
@@ -52,7 +52,6 @@ def get_strategies(experiment: dict) -> dict:
 
 def create_expected_results(strategy: dict) -> dict:
     """ Creates a dict to put the expected results into """
-    print(strategy)
     nums_of_evaluations = strategy['nums_of_evaluations']
     if len(nums_of_evaluations) <= 0:
         raise ValueError("No evaluations to perform")
@@ -78,7 +77,7 @@ def execute_experiment(filepath: str, profiling: bool) -> Tuple[dict, dict, dict
     change_directory("../cached_data_used")
     strategies = get_strategies(experiment)
     kernel_names = experiment['kernels']
-    kernels = list(importlib.import_module(kernel_name) for kernel_name in kernel_names)
+    kernels = list(import_module(kernel_name) for kernel_name in kernel_names)
 
     # execute each strategy in the experiment per GPU and kernel
     caches = dict()
