@@ -163,7 +163,7 @@ traitlets==5.1.1
 tuna==0.5.9
 typed-ast==1.5.0
 typing-extensions==3.10.0.2
-ujson==4.3.0
+ujson==5.1.0
 urllib3==1.26.7
 virtualenv==20.10.0
 virtualenv-clone==0.5.7
