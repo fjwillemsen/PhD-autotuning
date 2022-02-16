@@ -37,7 +37,6 @@ def tune(device_name, strategy="bayes_opt", strategy_options=None, verbose=False
                                       strategy_options=strategy_options, simulation_mode=simulation_mode)
 
     # print(len(results))
-    print(results)
 
     return results
 

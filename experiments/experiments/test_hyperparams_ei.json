@@ -47,13 +47,22 @@
       }
     },
     {
-      "name": "bayes_opt_ei-gpytorch",
+      "name": "bayes_opt_gpytorch_hyperparamtuned_23",
       "strategy": "bayes_opt_GPyTorch_lean",
-      "display_name": "BO EI GPyTorch index",
+      "display_name": "BO EI GPyTorch hyperparamtuned",
       "options": {
         "max_fevals": 220,
+        "initialsamplemethod": "lhs",
+        "initialsamplerandomoffsetfactor": 0.01,
         "method": "ei",
-        "initialsamplemethod": "index"
+        "methodparams": {
+          "explorationfactor": 0.05
+        },
+        "covariancekernel": "matern_scalekernel",
+        "covariancelengthscale": 0.5,
+        "optimizer": "LBFGS",
+        "initial_training_iter": 25,
+        "training_iter": 3
       }
     },
     {
@@ -67,13 +76,22 @@
       }
     },
     {
-      "name": "bayes_opt_ei-random-gpytorch",
+      "name": "bayes_opt_gpytorch_hyperparamtuned_21",
       "strategy": "bayes_opt_GPyTorch_lean",
-      "display_name": "BO EI GPyTorch random",
+      "display_name": "BO EI GPyTorch hyperparamtuned new",
       "options": {
         "max_fevals": 220,
+        "initialsamplemethod": "lhs",
+        "initialsamplerandomoffsetfactor": 0.1,
         "method": "ei",
-        "initialsamplemethod": "random"
+        "methodparams": {
+          "explorationfactor": 0.1
+        },
+        "covariancekernel": "matern_scalekernel",
+        "covariancelengthscale": 0.5,
+        "optimizer": "LBFGS",
+        "initial_training_iter": 5,
+        "training_iter": 1
       }
     }
   ]

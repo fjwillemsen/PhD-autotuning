@@ -1,5 +1,5 @@
 import sys
-from adding_kernel.adding_kernel_wrapper import tune as wrapped_tune
+from .adding_kernel.adding_kernel_wrapper import tune as wrapped_tune
 
 
 def tune(device_name, strategy="bayes_opt_GPyTorch_lean", strategy_options=None, verbose=True, quiet=False, simulation_mode=True):

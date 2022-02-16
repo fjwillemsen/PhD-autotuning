@@ -7,7 +7,7 @@ import json
 import os
 from collections import OrderedDict
 
-from adding_kernel.common import reg_observer
+from .common import reg_observer
 
 metrics = OrderedDict()
 metrics["registers"] = lambda p: p["num_regs"]

@@ -1,106 +1,23 @@
 """ Visualize the results of the experiments """
 import argparse
+from collections import defaultdict
 import numpy as np
-# import pandas as pd
-# import statistics
 from copy import deepcopy
 from typing import Tuple
-
 import matplotlib.pyplot as plt
-# from matplotlib.patches import Ellipse
-# import seaborn as sns
+import warnings
 
 from caching import CachedObject
 from experiments2 import execute_experiment, create_expected_results
 
+import sys
+
+sys.path.append("..")
+from cached_data_used.kernel_info_generator import kernels_device_info
+
 # The kernel information per device and device information for visualization purposes
 marker_variatons = ['v', 's', '*', '1', '2', 'd', 'P', 'X']
-kernel_device_info = {
-    'A100': {
-        'name': 'A100',
-        'displayname': 'A100',
-        'kernels': {
-            'GEMM': {
-                'absolute_optimum': 8.518111999999999,
-                'y_axis_upper_limit': 9.9,
-            },
-            'convolution': {
-                'absolute_optimum': 0.7390080038458109,
-                'y_axis_upper_limit': 1.0,
-            },
-            'pnpoly': {
-                'absolute_optimum': 13.090592086315155,
-                'y_axis_upper_limit': 13.45,
-            },
-            'expdist': {
-                'absolute_optimum': 33.87768375922341,
-                'y_axis_upper_limit': 47,
-            },
-            'adding': {
-                'absolute_optimum': 1.4682930000126362,
-                'y_axis_upper_limit': None,
-            },
-        },
-    },
-    'RTX_2070_SUPER': {
-        'name': 'RTX_2070_Super',
-        'displayname': 'RTX 2070 Super',
-        'kernels': {
-            'GEMM': {
-                'absolute_optimum': 17.111732999999997,
-                'y_axis_upper_limit': 22.8,
-            },
-            'convolution': {
-                'absolute_optimum': 1.2208920046687126,
-                'y_axis_upper_limit': 1.9,
-            },
-            'pnpoly': {
-                'absolute_optimum': 12.325379967689514,
-                'y_axis_upper_limit': 13.5,
-            },
-        },
-    },
-    'GTX_TITAN_X': {
-        'name': 'GTX_TITAN_X',
-        'displayname': 'GTX Titan X',
-        'kernels': {
-            'GEMM': {
-                'absolute_optimum': 28.307017000000002,
-                'y_axis_upper_limit': 37,
-            },
-            'convolution': {
-                'absolute_optimum': 1.6253190003335476,
-                'y_axis_upper_limit': 2.52,
-            },
-            'pnpoly': {
-                'absolute_optimum': 26.968406021595,
-                'y_axis_upper_limit': 35.1,
-            },
-        },
-    },
-    'generator': {
-        'name': 'generator',
-        'displayname': 'Synthetic searchspaces',
-        'kernels': {
-            'Rosenbrock': {
-                'absolute_optimum': 0.0,
-                'y_axis_upper_limit': 4,
-            },
-            'Mishrasbird': {
-                'absolute_optimum': 0.0,
-                'y_axis_upper_limit': 51,
-            },
-            'Gomez-Levy': {
-                'absolute_optimum': 0.0,
-                'y_axis_upper_limit': 0.27,
-            },
-            'multimodal_sinewave': {
-                'absolute_optimum': -1.92,
-                'y_axis_upper_limit': -1.7,
-            }
-        }
-    }
-}
+NRMSE_dict = defaultdict(list)
 
 
 def calculate_lower_upper_error(observations: list) -> Tuple[float, float]:
@@ -132,7 +49,9 @@ class Visualize():
     })
 
     def __init__(self, experiment_filename: str) -> None:
-        self.experiment, self.strategies, self.caches = execute_experiment(experiment_filename, profiling=False)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.experiment, self.strategies, self.caches = execute_experiment(experiment_filename, profiling=False)
         print("\n\n")
 
         # find the minimum and maximum number of evaluations over all strategies
@@ -165,13 +84,15 @@ class Visualize():
                         raise ValueError(f"Strategy {strategy['display_name']} not in cache, make sure execute_experiment() has ran first")
 
                 # visualize the results
-                info = kernel_device_info[gpu_name]['kernels'][kernel_name]
+                info = kernels_device_info[gpu_name]['kernels'][kernel_name]
                 self.plot_strategies_over_evals(axs[0], strategies_data, info, y_metric='time')
                 self.plot_strategy_runtime_barchart(axs[1], strategies_data, info)
 
                 # finalize the figure and display it
                 fig.tight_layout()
                 plt.show()
+        for key, NRMSE_vals in NRMSE_dict.items():
+            print(f"{key}: {round(np.mean(NRMSE_vals), 3)} {NRMSE_vals}")
 
     def order_strategies(self, main_bar_group: str) -> list:
         """ Orders the strategies in the order we wish to have them plotted """
@@ -212,6 +133,10 @@ class Visualize():
 
         # plot absolute optimum
         absolute_optimum = info['absolute_optimum']
+        absolute_difference = info['absolute_difference']
+        median = info['median']
+        iqr = info['interquartile_range']
+        std = info['std']
         if absolute_optimum is not None:
             ax.plot([self.min_num_evals, self.max_num_evals], [absolute_optimum, absolute_optimum], linestyle='-',
                     label="True optimum {}".format(round(absolute_optimum, 3)), color='black')
@@ -274,8 +199,15 @@ class Visualize():
             marker = 'o'
             alpha = 1.0
             fill_alpha = 0.2
+            MAE = round(np.mean(perf[1:] - absolute_optimum), 6)
+            # MRE = round(np.mean((perf[1:] - absolute_optimum) / perf[1:]), 6)
+            MNE = round(np.mean((perf[1:] - absolute_optimum) / std), 6)
+            # RMSE = round(np.sqrt(np.mean(np.square(perf[1:] - absolute_optimum))), 6)
+            # NRMSE = round(np.sqrt(np.mean(np.square(perf[1:] - absolute_optimum))) / iqr, 6)
+            # NRMSNE = round(np.sqrt(np.mean(np.square((perf[1:] - absolute_optimum)) / std)) / median, 6)
+            NRMSE_dict[strategy['display_name']].append(MNE)
             plot_error = plot_errors
-            # TODO change below to reduce cognitive complexity
+            # TODO change code in if-statement below to reduce cognitive complexity
             if 'bar_group' in strategy:
                 bar_group = strategy['bar_group']
                 marker = bar_groups_markers[bar_group]
@@ -293,7 +225,7 @@ class Visualize():
             if shaded is True:
                 if plot_error:
                     ax.fill_between(x_axis, perf_error_lower, perf_error_upper, alpha=fill_alpha, antialiased=True, color=color)
-                ax.plot(x_axis, perf, marker=marker, alpha=alpha, linestyle='--', label=strategy['display_name'], color=color)
+                ax.plot(x_axis, perf, marker=marker, alpha=alpha, linestyle='--', label=f"{strategy['display_name']} ({MAE}, {MNE})", color=color)
             else:
                 ax.errorbar(x_axis, perf, perf_error, marker=marker, alpha=alpha, linestyle='--', label=strategy['display_name'])
 

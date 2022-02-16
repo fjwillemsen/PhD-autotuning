@@ -75,6 +75,7 @@ def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, 
 
     # repeat the strategy as specified
     repeated_results = list()
+    mean_normalized_errors = list()
     total_time_results = np.array([])
     for rep in progressbar.progressbar(range(strategy['repeats']), redirect_stdout=True):
         attempt = 0
