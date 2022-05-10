@@ -5,8 +5,11 @@ import matplotlib.pyplot as plt
 from matplotlib.path import Path
 import matplotlib.patches as patches
 import numpy as np
+from typing import Tuple
 
 skip_hyperparams_list = ['max_fevals', 'time', 'times', 'strategy_time']
+hyperparam_plot_index = dict()
+hyperparam_nonconstant_names = list()
 
 
 def reload_cache():
@@ -32,15 +35,25 @@ def moving_average(a, n=10):
     return np.concatenate([prefix, ma])
 
 
-def preload_hyperparameterdata():
+def preload_hyperparameterdata() -> Tuple[int, list, dict, list, list]:
     cache = reload_cache()
+    search_space_size = np.prod(tuple(len(params) for params in cache['tune_params'].values()))
     hyperparam_names = list(hp for hp in cache['tune_params_keys'] if hp not in skip_hyperparams_list)
     isfullynumeric = list()
     onehotencoding = list()    # add the list of unique values for each hyperparameter to easily do onehot encoding
 
     # create the fully numeric mask and one-hot encoded values
+    nonconstant_counter = 0
     for key in hyperparam_names:
         values = cache['tune_params'][key]
+        # do not display hyperparams that are constant
+        constant = len(values) <= 1
+        if not constant:
+            hyperparam_plot_index[key] = nonconstant_counter
+            hyperparam_nonconstant_names.append(key)
+            nonconstant_counter += 1
+        else:
+            continue
         isfullynumeric.append(all(isinstance(h, (int, float)) for h in values))
         onehotencoding.append(list(values))
         # remove the boilerplate around the explorationfactor
@@ -48,7 +61,7 @@ def preload_hyperparameterdata():
             for i in range(len(onehotencoding[-1])):
                 onehotencoding[-1][i] = str(onehotencoding[-1][i])[22:-1]
 
-    return hyperparam_names, cache, isfullynumeric, onehotencoding
+    return search_space_size, hyperparam_names, cache, isfullynumeric, onehotencoding
 
 
 def setup_plot_per_hyperparameter(subfigure, hyperparam_names, isfullynumeric, onehotencoding):
@@ -62,7 +75,7 @@ def setup_plot_per_hyperparameter(subfigure, hyperparam_names, isfullynumeric, o
         # axes[i].set_xticks(onehotencoding[i] if isfullynumeric[i] else range(len(onehotencoding[i])))
         axis.set_xticks(range(len(onehotencoding[i])))
         axis.set_xticklabels(onehotencoding[i])
-        axis.set_title(hyperparam_names[i], fontsize=9)
+        axis.set_title(hyperparam_nonconstant_names[i], fontsize=9)
 
     return axes, plots
 
@@ -86,8 +99,10 @@ def setup_plot_parallel_coordinates(subfigure, isfullynumeric, onehotencoding):
 def plot_per_hyperparameter(axes, plots, times, hyperparams: dict, isnumeric: list, onehotencoding: list, cmap):
     # update each plot
     for index, y in enumerate(hyperparams.values()):
-        if list(hyperparams.keys())[index] == 'warnings':
+        hyperparam_name = list(hyperparams.keys())[index]
+        if hyperparam_name == 'warnings' or hyperparam_name in skip_hyperparams_list or hyperparam_name not in hyperparam_plot_index.keys():
             continue
+        index = hyperparam_plot_index[hyperparam_name]
         # if not isnumeric[index]:
         for i, e in enumerate(y):
             if not isnumeric[index] and 'explorationfactor' in e:
@@ -192,7 +207,7 @@ def plot_parallel_coordinates(subfigure, hyperparams: dict, isnumeric: list, one
 
 
 # preload the cache
-hyperparam_names, preloaded_cache, isfullynumeric, onehotencoding = preload_hyperparameterdata()
+search_space_size, hyperparam_names, preloaded_cache, isfullynumeric, onehotencoding = preload_hyperparameterdata()
 
 # set the stage
 plt.ion()
@@ -217,8 +232,7 @@ fig_4_axes, fig_4_plots = None, None
 invalid_value = 1e20
 best_yet = invalid_value
 last_num_samples = 0
-iterations = 35
-max_fevals = 1000
+iterations = 56
 
 # add the old methods as reference points
 # MAE
@@ -259,17 +273,26 @@ max_fevals = 1000
 # static_x_values = [0.6500610310571429, 79.79173324522856, 58.08916327734285]
 # static_y_values = [0.019283924152746993, 0.0127291622968705, 0.012189615000319929]
 
-# MNE 4 (std, grandmean of median)
+# # MNE 4 (std, grandmean of median)
+# plot1 = ax_1.scatter([], [], label='BO hyperparamtuning', cmap='viridis')
+# ax_1.scatter([0.6074726796857142], [0.03903], label='random sampling', edgecolors='k', facecolors='b')
+# # ax_1.scatter([61.07047364405715], [0.012434733581032989], label='BO EI old', edgecolors='k', facecolors='tab:orange')
+# ax_1.scatter([30.459359194085717], [0.0017592476656916748], label='BO EI LHS Gaussian', edgecolors='k', facecolors='r')
+# static_x_values = [0.6074726796857142, 30.459359194085717]
+# static_y_values = [0.03903, 0.0017592476656916748]
+# ax_1.legend()
+
+# MWP (mean weighted position, inverse-variance weighted average)
 plot1 = ax_1.scatter([], [], label='BO hyperparamtuning', cmap='viridis')
-ax_1.scatter([0.6074726796857142], [0.03903], label='random sampling', edgecolors='k', facecolors='b')
-# ax_1.scatter([61.07047364405715], [0.012434733581032989], label='BO EI old', edgecolors='k', facecolors='tab:orange')
-ax_1.scatter([15.561630554857143], [0.00409], label='BO EI LHS', edgecolors='k', facecolors='r')
-static_x_values = [0.6074726796857142, 15.561630554857143]
-static_y_values = [0.03903, 0.00409]
+ax_1.scatter([0.6607871937857144], [0.03915019], label='random sampling', edgecolors='k', facecolors='b')
+ax_1.scatter([57.22632902153571], [0.0016490878339355402], label='BO EI old', edgecolors='k', facecolors='tab:orange')
+ax_1.scatter([17.61113134375], [0.0007871754141325752], label='BO hyperparamtuned', edgecolors='k', facecolors='r')
+static_x_values = [0.6607871937857144, 57.22632902153571, 17.61113134375]
+static_y_values = [0.03915019, 0.0016490878339355402, 0.0007871754141325752]
 ax_1.legend()
 
 barchart = ax_2.bar([], [])
-plot_moving_average = ax_2.plot([], [], 'b')
+plot_moving_average, = ax_2.plot([], [], 'b')
 
 while True:
     # load the data
@@ -308,7 +331,7 @@ while True:
 
     # obtain the hyperparameters for a parallel coordinates plot
     hyperparams = dict()
-    for hyperparam_name in list(values)[0].keys():
+    for hyperparam_name, hyperparam_values in list(values)[0].items():
         if hyperparam_name in skip_hyperparams_list:
             continue
         hyperparams[hyperparam_name] = list()
@@ -333,8 +356,9 @@ while True:
 
     # set the barcharts
     iterations_valid = range(len(x_valid) + 1)[1:]
-    barchart = ax_2.bar(iterations_valid, y_valid, color=scaled_cmap)
-    plot_moving_average = ax_2.plot(iterations_valid, moving_average(y_valid, round(np.sqrt(len(y_valid)) + 1)), 'b')
+    barchart = ax_2.bar(iterations_valid, y_valid, color=scaled_cmap, edgecolor="none")
+    plot_moving_average.set_xdata(iterations_valid)
+    plot_moving_average.set_ydata(moving_average(y_valid, round(np.sqrt(len(y_valid)) + 1)))
     ax_2.relim()
     ax_2.autoscale_view()
     ax_2.set_ylim(0, max(y_valid) + np.mean(y_valid) * 0.05)
@@ -357,7 +381,7 @@ while True:
     y_lim = np.append(y_valid, static_y_values)
     ax_1.set_xlim(min(x_lim) - x_offset, max(x_lim) + x_offset)
     ax_1.set_ylim(min(y_lim) - y_offset, max(y_lim) + y_offset)
-    f.canvas.manager.set_window_title(f"{num_samples} / {max_fevals}")
+    f.canvas.manager.set_window_title(f"{num_samples} / {search_space_size}")
     title = f"Showing {len(y_valid)} valid samples. {len(y) - len(y_valid)} invalid. Total {num_samples}."
     f.suptitle(title)
 

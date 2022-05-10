@@ -69,6 +69,7 @@
       "name": "bayes_opt_ei-lhs-gpytorch",
       "strategy": "bayes_opt_GPyTorch_lean",
       "display_name": "BO EI GPyTorch LHS",
+      "hide": true,
       "options": {
         "max_fevals": 220,
         "method": "ei",
@@ -92,6 +93,69 @@
         "optimizer": "LBFGS",
         "initial_training_iter": 5,
         "training_iter": 1
+      }
+    },
+    {
+      "name": "bayes_opt_gpytorch_hyperparamtuned_24",
+      "strategy": "bayes_opt_GPyTorch_lean",
+      "display_name": "BO EI GPyTorch hyperparamtuned newer",
+      "options": {
+        "max_fevals": 220,
+        "initialsamplemethod": "index",
+        "initialsamplerandomoffsetfactor": 0.3,
+        "method": "ei",
+        "methodparams": {
+          "explorationfactor": 0.01
+        },
+        "covariancekernel": "matern_scalekernel",
+        "covariancelengthscale": 1.5,
+        "optimizer": "LBFGS",
+        "initial_training_iter": 5,
+        "training_iter": 0
+      }
+    },
+    {
+      "name": "bayes_opt_gpytorch_hyperparamtuned_temp",
+      "strategy": "bayes_opt_GPyTorch_lean",
+      "display_name": "BO EI GPyTorch hyperparamtuned fixednoise",
+      "options": {
+        "max_fevals": 220,
+        "likelihood": "FixedNoise"
+      }
+    },
+    {
+      "name": "bayes_opt_gpytorch_hyperparamtuned_temp3",
+      "strategy": "bayes_opt_GPyTorch_lean",
+      "display_name": "BO EI GPyTorch hyperparamtuned fixednoise new",
+      "ignore_cache": true,
+      "repeats": 100,
+      "options": {
+        "max_fevals": 220,
+        "likelihood": "FixedNoise",
+        "initialsamplerandomoffsetfactor": 0.01,
+        "initial_training_iter": 50,
+        "training_after_iter": 10
+      }
+    },
+    {
+      "name": "bayes_opt_gpytorch_hyperparamtuned_25",
+      "strategy": "bayes_opt_GPyTorch_lean",
+      "display_name": "BO EI GPyTorch hyperparamtuned newest",
+      "repeats": 100,
+      "options": {
+        "max_fevals": 220,
+        "initialsamplemethod": "index",
+        "initialsamplerandomoffsetfactor": 0.1,
+        "method": "ei",
+        "methodparams": {
+          "explorationfactor": "CV"
+        },
+        "covariancekernel": "matern_scalekernel",
+        "covariancelengthscale": 0.5,
+        "likelihood": "FixedNoise",
+        "optimizer": "LBFGS",
+        "initial_training_iter": 50,
+        "training_after_iter": 10
       }
     }
   ]

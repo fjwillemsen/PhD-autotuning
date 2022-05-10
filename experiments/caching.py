@@ -1,3 +1,4 @@
+import os
 import json
 import numpy as np
 from typing import Optional, Dict, Any
@@ -107,22 +108,27 @@ class CacheInterface:
 
     def file_name(kernel_name: str, device_name: str) -> str:    # pylint: disable=no-self-argument
         """ Combine the variables into the target filename """
-        return f"cached_visualizations/cached_plot_{kernel_name}_{device_name}.json"
+        return f"cached_plot_{kernel_name}_{device_name}.json"
+
+    def file_path(file_name: str) -> str:
+        """ Returns the absolute file path """
+        # TODO fix this so it works more flexibly for nested folders
+        return os.path.abspath(f"cached_visualizations/{file_name}")
 
     def read(kernel_name: str, device_name: str) -> Dict[str, Any]:    # pylint: disable=no-self-argument
         """ Read and parse a cachefile """
         filename = CacheInterface.file_name(kernel_name, device_name)
-        with open(filename) as json_file:
+        with open(CacheInterface.file_path(filename)) as json_file:
             return json.load(json_file)
 
     def write(cached_object: Dict[str, Any]):    # pylint: disable=no-self-argument
         """ Serialize and write a cachefile """
         filename = CacheInterface.file_name(cached_object['kernel_name'], cached_object['device_name'])    # pylint: disable=unsubscriptable-object
-        with open(filename, 'w') as json_file:
+        with open(CacheInterface.file_path(filename), 'w') as json_file:
             json.dump(cached_object, json_file, cls=NumpyEncoder)
 
     def delete(kernel_name: str, device_name: str) -> bool:    # pylint: disable=no-self-argument
         """ Delete a cachefile """
         import os
         filename = CacheInterface.file_name(kernel_name, device_name)
-        os.remove(filename)
+        os.remove(CacheInterface.file_path(filename))

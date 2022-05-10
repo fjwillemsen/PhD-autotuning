@@ -16,8 +16,9 @@ from record_data import default_records
 
 
 def change_directory(path: str):
-    os.chdir(path)
-    sys.path.append(path)
+    absolute_path = os.path.abspath(path)
+    os.chdir(absolute_path)
+    sys.path.append(absolute_path)
 
 
 def get_experiment(filename: str) -> dict:
@@ -74,7 +75,8 @@ def execute_experiment(filepath: str, profiling: bool) -> Tuple[dict, dict, dict
     """ Executes the experiment by retrieving it from the cache or running it """
     experiment = get_experiment(filepath)
     print(f"Starting experiment \'{experiment['name']}\'")
-    change_directory("../cached_data_used")
+    kernel_path = experiment.get('kernel_path', "")
+    change_directory("../cached_data_used" + kernel_path)
     strategies = get_strategies(experiment)
     kernel_names = experiment['kernels']
     kernels = list(import_module(kernel_name) for kernel_name in kernel_names)

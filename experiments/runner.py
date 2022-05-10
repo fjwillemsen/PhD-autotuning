@@ -100,7 +100,7 @@ def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, 
     if profiling:
         stats = yappi.get_func_stats()
         # stats.print_all()
-        path = "../experiments/profilings/V3/profile-v1.prof"
+        path = "../experiments/profilings/random/profile-v2.prof"
         stats.save(path, type="pstat")    # pylint: disable=no-member
         yappi.clear_stats()
 

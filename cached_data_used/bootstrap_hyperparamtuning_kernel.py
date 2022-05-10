@@ -16,6 +16,7 @@ def bootstrap_hyperparamtuning_kernel(invalid_flag, **kwargs) -> Tuple[list, dic
         kernels_device_info_data = file.read()
     kernels_device_info = json.loads(kernels_device_info_data)
 
+    # strategy = "random_sample"
     # strategy = "bayes_opt"
     strategy = "bayes_opt_GPyTorch_lean"
 
@@ -58,6 +59,7 @@ def bootstrap_hyperparamtuning_kernel(invalid_flag, **kwargs) -> Tuple[list, dic
         # execute the configuration while catching warnings
         with warnings.catch_warnings(record=True) as warns:
             warnings.simplefilter("ignore", category=UserWarning)
+            warnings.simplefilter("ignore", category=RuntimeWarning)
             # warnings.filterwarnings("ignore", category=UserWarning)
             results, env = kernel.tune(device_name, strategy, strategy_options=kwargs, verbose=False, quiet=True, simulation_mode=True)
             # warnings.filterwarnings("default", category=UserWarning)
@@ -98,19 +100,17 @@ def bootstrap_hyperparamtuning_kernel(invalid_flag, **kwargs) -> Tuple[list, dic
         positions = list()
         split_results = range(40, len(results) + 1, 20)
         for count, index in enumerate(split_results):
-            selected_res = results[19:index - 1]
+            selected_res = results[:index - 1]    # 19: or not?
             f = min(selected_res, key=lambda x: x['time'])['time']
             if f < invalid_value:
                 # multiply by count to make sure that later iterations count more heavily, optionally use sqrt(count)
                 # TODO match the kernels to a distribution, use a CDF to see how likely the obtained value or better is, use that as a measure of how good it is
                 cache_position = cache_sorted_times.index(f)
-                positions.append(count * (cache_position / cache_size))
-            else:
-                print("Invalid")
+                positions.append((count + 1) * (cache_position / cache_size))
         if len(positions) <= 0:
             return return_invalid(err_reason="No valid normalized value found")
-        # divide by the length so invalids are punished
-        mean_weighted_positions.append(np.sum(positions) / len(split_results))
+        # take the mean and multiply by the fractional difference between the number of brackets and the number of valids so invalids are punished
+        mean_weighted_positions.append(np.mean(positions) * (len(split_results) / len(positions)))
 
     # return the MNE values per kernel and warnings
     warning_counter = dict(zip(warncategories, warn_counter))

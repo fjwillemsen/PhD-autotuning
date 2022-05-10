@@ -125,6 +125,14 @@ kernels_device_info = {
                 'interquartile_range': 1.5534700018115082,
                 'std': 0.9655453670304803,
                 'y_axis_upper_limit': -1.7,
+            },
+            'predict_peak_mem': {
+                "absolute_optimum": 6.392,
+                "absolute_difference": 17.21,
+                "mean": 12.282430393996249,
+                "median": 11.7,
+                "std": 2.907976801390474,
+                "interquartile_range": 4.219000000000001
             }
         }
     }

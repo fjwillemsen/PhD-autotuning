@@ -13,11 +13,17 @@ from experiments2 import execute_experiment, create_expected_results
 import sys
 
 sys.path.append("..")
-from cached_data_used.kernel_info_generator import kernels_device_info
+# from cached_data_used.kernel_info_generator import kernels_device_info
+
+# read the kernel info dictionary from file
+import json
+with open("../cached_data_used/kernel_info.json") as file:
+    kernels_device_info_data = file.read()
+kernels_device_info = json.loads(kernels_device_info_data)
 
 # The kernel information per device and device information for visualization purposes
 marker_variatons = ['v', 's', '*', '1', '2', 'd', 'P', 'X']
-NRMSE_dict = defaultdict(list)
+MWP_dict = defaultdict(list)
 
 
 def calculate_lower_upper_error(observations: list) -> Tuple[float, float]:
@@ -91,8 +97,11 @@ class Visualize():
                 # finalize the figure and display it
                 fig.tight_layout()
                 plt.show()
-        for key, NRMSE_vals in NRMSE_dict.items():
-            print(f"{key}: {round(np.mean(NRMSE_vals), 3)} {NRMSE_vals}")
+        for key, MWP_tuple in MWP_dict.items():
+            MWP_vals, MWP_vars = zip(*MWP_tuple)
+            MWP_vals, MWP_vars = np.array(MWP_vals), np.array(MWP_vars)
+            inverse_variance_weighted_average = np.sum(MWP_vals / MWP_vars) / np.sum(1 / MWP_vars)
+            print(f"{key}: {round(inverse_variance_weighted_average, 5)} {(MWP_vals / MWP_vars) / (1 / MWP_vars)}")
 
     def order_strategies(self, main_bar_group: str) -> list:
         """ Orders the strategies in the order we wish to have them plotted """
@@ -128,6 +137,11 @@ class Visualize():
             'pruned': 'd',
             'bo': 'D',
         }
+        bar_groups_markers = {
+            'reference': '.',
+            'old': '+',
+            'new': 'd'
+        }
         colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
         strategies_ordered = self.order_strategies(main_bar_group)
 
@@ -137,13 +151,19 @@ class Visualize():
         median = info['median']
         iqr = info['interquartile_range']
         std = info['std']
+        cache_size: int = info['size']
+        sorted_times: list = info['sorted_times']
         if absolute_optimum is not None:
             ax.plot([self.min_num_evals, self.max_num_evals], [absolute_optimum, absolute_optimum], linestyle='-',
                     label="True optimum {}".format(round(absolute_optimum, 3)), color='black')
 
         # plotting
+        color_index = 0
         for strategy_index, strategy in enumerate(strategies_ordered):
-            color = colors[strategy_index]
+            if 'hide' in strategy.keys() and strategy['hide']:
+                continue
+            color = colors[color_index]
+            color_index += 1
             collect_xticks = list()
 
             # use the results to draw the plot
@@ -158,7 +178,8 @@ class Visualize():
             cumulative_execution_time = np.array([])
             cumulative_total_time = np.array([])
             collect_xticks.append(list(int(x) for x in results.keys()))
-            for key in results.keys():
+            iteration_positions = list(list() for _ in results[list(results.keys())[0]][y_metric])
+            for count, key in enumerate(results.keys()):
                 result = results[key]
 
                 # calculate y axis data
@@ -171,6 +192,10 @@ class Visualize():
                 # print(f"{key} | {result['mean_' + y_metric]}: ml {lower_error} mh {upper_error} | {lower_values} {upper_values}")
                 perf_error_lower = np.append(perf_error_lower, lower_error)
                 perf_error_upper = np.append(perf_error_upper, upper_error)
+
+                for iteration, observation in enumerate(observations):
+                    cache_position = sorted_times.index(observation)
+                    iteration_positions[iteration].append((count + 1) * (cache_position / cache_size))
 
                 # calculate x axis data
                 # mean_actual_num_evals are the mean number of evaluations without invalid configurations, but we want to include the invalid configurations in the number of evaluations for a more complete result
@@ -202,10 +227,15 @@ class Visualize():
             MAE = round(np.mean(perf[1:] - absolute_optimum), 6)
             # MRE = round(np.mean((perf[1:] - absolute_optimum) / perf[1:]), 6)
             MNE = round(np.mean((perf[1:] - absolute_optimum) / std), 6)
+            mean_weighted_positions = list()
+            for positions in iteration_positions:
+                mean_weighted_positions.append(np.mean(positions))
+            mean_weighted_position = np.mean(mean_weighted_positions)
+
             # RMSE = round(np.sqrt(np.mean(np.square(perf[1:] - absolute_optimum))), 6)
             # NRMSE = round(np.sqrt(np.mean(np.square(perf[1:] - absolute_optimum))) / iqr, 6)
             # NRMSNE = round(np.sqrt(np.mean(np.square((perf[1:] - absolute_optimum)) / std)) / median, 6)
-            NRMSE_dict[strategy['display_name']].append(MNE)
+            MWP_dict[strategy['display_name']].append((mean_weighted_position, np.std(mean_weighted_positions)))
             plot_error = plot_errors
             # TODO change code in if-statement below to reduce cognitive complexity
             if 'bar_group' in strategy:
@@ -225,7 +255,8 @@ class Visualize():
             if shaded is True:
                 if plot_error:
                     ax.fill_between(x_axis, perf_error_lower, perf_error_upper, alpha=fill_alpha, antialiased=True, color=color)
-                ax.plot(x_axis, perf, marker=marker, alpha=alpha, linestyle='--', label=f"{strategy['display_name']} ({MAE}, {MNE})", color=color)
+                ax.plot(x_axis, perf, marker=marker, alpha=alpha, linestyle='--',
+                        label=f"{strategy['display_name']} ({round(mean_weighted_position, 6)}, {MNE})", color=color)
             else:
                 ax.errorbar(x_axis, perf, perf_error, marker=marker, alpha=alpha, linestyle='--', label=strategy['display_name'])
 
@@ -255,6 +286,8 @@ class Visualize():
         total_times_mean = np.array([])
         total_times_err = np.array([])
         for strategy_index, strategy in enumerate(strategies_ordered):
+            if 'hide' in strategy.keys() and strategy['hide']:
+                continue
             x_axis.append(strategy['display_name'])
             repeats = strategy['repeats']
             results = strategies_data[strategy_index]['results']
