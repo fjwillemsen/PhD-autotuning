@@ -12,7 +12,6 @@ import numpy as np
 
 from runner import collect_results
 from caching import CachedObject
-from record_data import default_records
 
 
 def change_directory(path: str):
@@ -40,42 +39,46 @@ def get_strategies(experiment: dict) -> dict:
     """ Gets the strategies from an experiments file by augmenting it with the defaults """
     strategy_defaults = experiment['strategy_defaults']
     strategies = experiment['strategies']
+    # get a baseline index if it exists
+    baseline_index = list(strategy_index for strategy_index, strategy in enumerate(strategies) if 'is_baseline' in strategy)
+    if len(baseline_index) != 1:
+        raise ValueError(f"There must be exactly one baseline, found {len(baseline_index)} baselines")
+    if strategies[baseline_index[0]]['is_baseline'] != True:
+        raise ValueError(f"is_baseline must be true, yet is set to {strategies[0]['is_baseline']}!")
+    # if the baseline index is not 0, put the baseline strategy first
+    if baseline_index[0] != 0:
+        raise ValueError("The baseline strategy must be the first strategy in the experiments file!")
+        # strategies.insert(0, strategies.pop(baseline_index[0]))
+
+    # augment the strategies with the defaults
     for strategy in strategies:
         for default in strategy_defaults:
             if not default in strategy:
                 strategy[default] = strategy_defaults[default]
-        if not 'min_nums_of_evaluations' in strategy:
-            strategy['min_nums_of_evaluations'] = min(strategy['nums_of_evaluations'])
-        if not 'max_nums_of_evaluations' in strategy:
-            strategy['max_nums_of_evaluations'] = max(strategy['nums_of_evaluations'])
     return strategies
 
 
-def create_expected_results(strategy: dict) -> dict:
+def create_expected_results() -> dict:
     """ Creates a dict to put the expected results into """
-    nums_of_evaluations = strategy['nums_of_evaluations']
-    if len(nums_of_evaluations) <= 0:
-        raise ValueError("No evaluations to perform")
-
-    list_nums_of_evaluations = np.array(nums_of_evaluations).astype(int)
-    list_nums_of_evaluations_as_keys = list_nums_of_evaluations.astype(str).tolist()
-
-    # fill the results with the default values
     expected_results = dict({
-        'results_per_number_of_evaluations': dict.fromkeys(list_nums_of_evaluations_as_keys),
-        'total_time_mean': None,
-        'total_time_err': None,
+        'total_times': None,
+        'num_function_evaluations': None,
+        'best_found_objective_values': None,
+        'interpolated_time': None,
+        'interpolated_objective': None,
+        'interpolated_objective_std': None,
     })
-    for num_of_evaluations in list_nums_of_evaluations_as_keys:
-        expected_results['results_per_number_of_evaluations'][num_of_evaluations] = deepcopy(default_records)
     return expected_results
 
 
-def execute_experiment(filepath: str, profiling: bool) -> Tuple[dict, dict, dict]:
+def execute_experiment(filepath: str, profiling: bool, kernel_info_stats: dict = None) -> Tuple[dict, dict, dict]:
     """ Executes the experiment by retrieving it from the cache or running it """
     experiment = get_experiment(filepath)
     print(f"Starting experiment \'{experiment['name']}\'")
     kernel_path = experiment.get('kernel_path', "")
+    resolution_multiplier = experiment.get('resolution_multiplier', 1)
+    if int(resolution_multiplier) != resolution_multiplier:
+        raise ValueError(f"The resolution_multiplier must be an integer, yet is {resolution_multiplier}.")
     change_directory("../cached_data_used" + kernel_path)
     strategies = get_strategies(experiment)
     kernel_names = experiment['kernels']
@@ -87,20 +90,37 @@ def execute_experiment(filepath: str, profiling: bool) -> Tuple[dict, dict, dict
         caches[gpu_name] = dict()
         for index, kernel in enumerate(kernels):
             kernel_name = kernel_names[index]
+            y_min = None
+            y_median = None
+            if kernel_info_stats is not None:
+                stats_info = kernel_info_stats[gpu_name]['kernels'][kernel_name]
+                y_min = stats_info['absolute_optimum']
+                y_median = stats_info['median']
             print(f"  running {kernel_name} on {gpu_name}")
             # get or create a cache to write the results to
             cache = CachedObject(kernel_name, gpu_name, deepcopy(strategies))
+            baseline_time_interpolated = None
+            baseline_executed = False
             for strategy in strategies:
                 print(f"    | with strategy {strategy['display_name']}")
                 # if the strategy is in the cache, use cached data
-                expected_results = create_expected_results(strategy)
-                if 'ignore_cache' not in strategy:
+                expected_results = create_expected_results()
+                if 'ignore_cache' not in strategy and baseline_executed is False:
                     cached_data = cache.get_strategy_results(strategy['name'], strategy['options'], strategy['repeats'], expected_results)
                     if cached_data is not None:
                         print("| retrieved from cache")
+                        if baseline_time_interpolated is None and 'is_baseline' in strategy and strategy['is_baseline'] is True:
+                            baseline_time_interpolated = cached_data['results']['interpolated_time']
                         continue
                 # execute each strategy that is not in the cache
-                strategy_results = collect_results(kernel, kernel_name, gpu_name, strategy, expected_results, default_records, profiling)
+                strategy_results = collect_results(kernel, kernel_name, gpu_name, strategy, expected_results, profiling, resolution_multiplier=resolution_multiplier, time_interpolated_axis=baseline_time_interpolated, y_min=y_min, y_median=y_median)
+                # if this strategy is used as the baseline, keep its x-axis (time dimension) as the baseline along which the other values are interpolated
+                if baseline_time_interpolated is None and 'is_baseline' in strategy and strategy['is_baseline'] is True:
+                    baseline_time_interpolated = strategy_results['interpolated_time']
+                    baseline_executed = True    # if the baseline has been (re)executed, the other cached strategies must be re-executed as the interpolated time axis has changed
+                # double check that the interpolated results are as expected
+                assert np.array_equal(baseline_time_interpolated, strategy_results['interpolated_time'])
+                assert len(baseline_time_interpolated) == len(strategy_results['interpolated_objective'])
                 # write the results to the cache
                 cache.set_strategy(deepcopy(strategy), strategy_results)
             caches[gpu_name][kernel_name] = cache

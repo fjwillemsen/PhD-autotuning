@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Tuple
 import matplotlib.pyplot as plt
 import warnings
+from sklearn.metrics import auc
 
 from caching import CachedObject
 from experiments2 import execute_experiment, create_expected_results
@@ -13,7 +14,7 @@ from experiments2 import execute_experiment, create_expected_results
 import sys
 
 sys.path.append("..")
-# from cached_data_used.kernel_info_generator import kernels_device_info
+# TODO from cached_data_used.kernel_info_generator import kernels_device_info # check whether this is necessary
 
 # read the kernel info dictionary from file
 import json
@@ -23,7 +24,6 @@ kernels_device_info = json.loads(kernels_device_info_data)
 
 # The kernel information per device and device information for visualization purposes
 marker_variatons = ['v', 's', '*', '1', '2', 'd', 'P', 'X']
-MWP_dict = defaultdict(list)
 
 
 def calculate_lower_upper_error(observations: list) -> Tuple[float, float]:
@@ -37,6 +37,11 @@ def calculate_lower_upper_error(observations: list) -> Tuple[float, float]:
     upper_error = np.mean(upper_values)
     return lower_error, upper_error
 
+def smoothing_filter(array: np.ndarray, window_length: int) -> np.ndarray:
+    """ Create a rolling average where the kernel size is the smoothing factor """
+    from scipy.signal import savgol_filter
+    return savgol_filter(array, window_length, 3)
+
 
 class Visualize():
     """ Class for visualization of experiments """
@@ -47,17 +52,20 @@ class Visualize():
         'compile_time': 'Average compile time in miliseconds',
         'execution_time': 'Evaluation execution time taken in miliseconds',
         'total_time': 'Average total time taken in miliseconds',
+        'kerneltime': 'Total kernel compilation and runtime in seconds',
     })
 
     y_metric_displayname = dict({
-        'time': 'Best found time in miliseconds',
+        'objective': 'Best found objective function value',
+        'objective_baseline': 'Best found objective function value relative to baseline',
+        'time': 'Best found kernel time in miliseconds',
         'GFLOP/s': 'GFLOP/s',
     })
 
     def __init__(self, experiment_filename: str) -> None:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            self.experiment, self.strategies, self.caches = execute_experiment(experiment_filename, profiling=False)
+            self.experiment, self.strategies, self.caches = execute_experiment(experiment_filename, profiling=False, kernel_info_stats=kernels_device_info)
         print("\n\n")
 
         # find the minimum and maximum number of evaluations over all strategies
@@ -69,12 +77,16 @@ class Visualize():
             self.max_num_evals = max(max(num_evals), self.max_num_evals)
 
         # visualize
+        cutoff_quantile = self.experiment['cutoff_quantile']
+        all_strategies_curves = list()
         for gpu_name in self.experiment['GPUs']:
             for kernel_name in self.experiment['kernels']:
                 print(f"  visualizing {kernel_name} on {gpu_name}")
 
                 # create the figure and plots
-                fig, axs = plt.subplots(ncols=2, figsize=(15, 10))    # if multiple subplots, pass the axis to the plot function with axs[0] etc.
+                fig, axs = plt.subplots(ncols=1, figsize=(15, 8))    # if multiple subplots, pass the axis to the plot function with axs[0] etc.
+                if not isinstance(axs, list):
+                    axs = [axs]
                 title = f"{kernel_name} on {gpu_name}"
                 fig.canvas.manager.set_window_title(title)
                 fig.suptitle(title)
@@ -83,221 +95,159 @@ class Visualize():
                 cache = self.caches[gpu_name][kernel_name]
                 strategies_data = list()
                 for strategy in self.strategies:
-                    expected_results = create_expected_results(strategy)
+                    expected_results = create_expected_results()
                     cached_data = cache.get_strategy_results(strategy['name'], strategy['options'], strategy['repeats'], expected_results)
-                    strategies_data.append(dict(cached_data))
                     if cached_data is None:
                         raise ValueError(f"Strategy {strategy['display_name']} not in cache, make sure execute_experiment() has ran first")
+                    strategies_data.append(cached_data)
 
                 # visualize the results
                 info = kernels_device_info[gpu_name]['kernels'][kernel_name]
-                self.plot_strategies_over_evals(axs[0], strategies_data, info, y_metric='time')
-                self.plot_strategy_runtime_barchart(axs[1], strategies_data, info)
+                subtract_baseline = self.experiment['relative_to_baseline']
+                strategies_curves = self.get_strategies_curves(strategies_data, info, cutoff_quantile, subtract_baseline=subtract_baseline)
+                self.plot_strategies_curves(axs[0], strategies_data, strategies_curves, info, cutoff_quantile, subtract_baseline=subtract_baseline)
+                all_strategies_curves.append(strategies_curves)
 
                 # finalize the figure and display it
                 fig.tight_layout()
                 plt.show()
-        for key, MWP_tuple in MWP_dict.items():
-            MWP_vals, MWP_vars = zip(*MWP_tuple)
-            MWP_vals, MWP_vars = np.array(MWP_vals), np.array(MWP_vars)
-            inverse_variance_weighted_average = np.sum(MWP_vals / MWP_vars) / np.sum(1 / MWP_vars)
-            print(f"{key}: {round(inverse_variance_weighted_average, 5)} {(MWP_vals / MWP_vars) / (1 / MWP_vars)}")
 
-    def order_strategies(self, main_bar_group: str) -> list:
-        """ Orders the strategies in the order we wish to have them plotted """
-        if main_bar_group == '':
-            return self.strategies
-        strategies_ordered = [None] * len(self.strategies)
-        index_first = 0
-        index_last = len(strategies_ordered) - 1
-        for strategy in self.strategies:
-            if 'bar_group' not in strategy:
-                strategies_ordered = self.strategies
-                break
-            if strategy['bar_group'] == main_bar_group:
-                strategies_ordered[index_last] = strategy
-                index_last -= 1
+        print("\n")
+        for strategy_index, strategy in enumerate(self.strategies):
+            perf = list()
+            for strategies_curves in all_strategies_curves:
+                for strategy_curve in strategies_curves['strategies']:
+                    if strategy_curve['strategy_index'] == strategy_index:
+                        perf.append(strategy_curve['performance'])
+            print(f"{strategy['display_name']} performance across kernels: {np.mean(perf)}")
+
+    def get_strategies_curves(self, strategies_data: list, info: dict, cutoff_quantile: float, subtract_baseline=True, main_bar_group='') -> dict:
+        # get the baseline
+        baseline_result = strategies_data[0]['results']
+        x_axis = np.array(baseline_result['interpolated_time'])
+        y_axis_baseline = np.array(baseline_result['interpolated_objective'])
+
+        # find the cutoff point
+        # the cutoff point is the time it takes the baseline to find <= [quantile]% of the absolute optimum
+        sorted_objective_values = np.array(info['sorted_times'])
+        objective_value_at_quantile = np.quantile(sorted_objective_values, 1-cutoff_quantile)   # sorted in ascending order, so inverse quantile
+        try:
+            cutoff_point = np.argwhere(y_axis_baseline <= objective_value_at_quantile)[0]
+            assert cutoff_point == int(cutoff_point)    # ensure that it is an integer
+            cutoff_point = int(cutoff_point)
+        except IndexError:
+            raise ValueError(f"The baseline has not reliably found the {cutoff_quantile} cutoff quantile, either decrease the cutoff or increase the allowed time.")
+        # print(f"Percentage of baseline search space used to get {cutoff_quantile} cutoff quantile: {(cutoff_point / y_axis_baseline.size)*100}%")
+        x_axis = x_axis[:cutoff_point]
+        y_axis_baseline = y_axis_baseline[:cutoff_point]
+
+        # create resulting dict
+        strategies_curves = dict({
+            'baseline': {
+                'x_axis': x_axis,
+                'y_axis': y_axis_baseline
+            },
+            'strategies': list()
+        })
+
+        performances = list()
+        for strategy_index, strategy in enumerate(self.strategies):
+            if 'hide' in strategy.keys() and strategy['hide']:
+                continue
+
+            # get the data
+            strategy = strategies_data[strategy_index]
+            results = strategy['results']
+            y_axis = np.array(results['interpolated_objective'])[:cutoff_point]
+            y_axis_std = np.array(results['interpolated_objective_std'])[:cutoff_point]
+            y_axis_std_lower = y_axis_std
+            y_axis_std_upper = y_axis_std
+
+            # find out where the global optimum is found and substract the baseline
+            # found_opt = np.argwhere(y_axis == absolute_optimum)
+            if subtract_baseline:
+                y_axis =  y_axis - y_axis_baseline
+
+            # quantify the performance of this strategy
+            if subtract_baseline:
+                # use average distance from random
+                performance = np.mean(y_axis)
             else:
-                strategies_ordered[index_first] = strategy
-                index_first += 1
-        if None in strategies_ordered:
-            strategies_ordered = self.strategies
-        return strategies_ordered
+                # use area under curve approach
+                performance = auc(x_axis, y_axis)
+            performances.append(performance)
+            print(f"Performance of {strategy['display_name']}: {performance}")
 
-    def plot_strategies_over_evals(self, ax: plt.Axes, strategies_data: list, info: dict, x_metric='num_evals', y_metric='GFLOP/s', shaded=True,
-                                   plot_errors=True, main_bar_group=''):
-        """ Plots all strategies with errorbars, shaded plots a shaded error region instead of error bars. Y-axis and X-axis metrics can be chosen. """
+            # write to resulting dict
+            result_dict = dict({
+                'strategy_index': strategy_index,
+                'y_axis': y_axis,
+                'y_axis_std': y_axis_std,
+                'y_axis_std_lower': y_axis_std_lower,
+                'y_axis_std_upper': y_axis_std_upper,
+                'performance': performance,
+            })
+            strategies_curves['strategies'].append(result_dict)
 
-        # plotting setup
-        bar_groups_markers = {
-            'reference': '.',
-            'basic': '+',
-            'multi': 'd',
-            'default': '+',
-            'pruned': 'd',
-            'bo': 'D',
-        }
+        print(f"Mean performance across strategies: {np.mean(performances)}")   # the higher the mean, the easier a search space is for the baseline
+        return strategies_curves
+
+
+    def plot_strategies_curves(self, ax: plt.Axes, strategies_data: list, strategies_curves: dict, info: dict, shaded=True, plot_errors=False, subtract_baseline=True):
+        """ Plots all optimization strategy curves """
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
         bar_groups_markers = {
             'reference': '.',
             'old': '+',
             'new': 'd'
         }
-        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-        strategies_ordered = self.order_strategies(main_bar_group)
 
-        # plot absolute optimum
+        baseline = strategies_curves['baseline']
+        x_axis = baseline['x_axis']
+
+        # plot the absolute optimum
         absolute_optimum = info['absolute_optimum']
-        absolute_difference = info['absolute_difference']
-        median = info['median']
-        iqr = info['interquartile_range']
-        std = info['std']
-        cache_size: int = info['size']
-        sorted_times: list = info['sorted_times']
-        if absolute_optimum is not None:
-            ax.plot([self.min_num_evals, self.max_num_evals], [absolute_optimum, absolute_optimum], linestyle='-',
+        if subtract_baseline is False and absolute_optimum is not None:
+            ax.plot([x_axis[0], x_axis[-1]], [absolute_optimum, absolute_optimum], linestyle='-',
                     label="True optimum {}".format(round(absolute_optimum, 3)), color='black')
 
-        # plotting
         color_index = 0
-        for strategy_index, strategy in enumerate(strategies_ordered):
-            if 'hide' in strategy.keys() and strategy['hide']:
-                continue
+        marker = ','
+        for strategy_curves in strategies_curves['strategies']:
+            # get the data
+            strategy = strategies_data[strategy_curves['strategy_index']]
+            y_axis = strategy_curves['y_axis']
+            y_axis_std = strategy_curves['y_axis_std']
+            y_axis_std_lower = strategy_curves['y_axis_std_lower']
+            y_axis_std_upper = strategy_curves['y_axis_std_upper']
+
+            # set colors, transparencies and markers
             color = colors[color_index]
             color_index += 1
-            collect_xticks = list()
-
-            # use the results to draw the plot
-            results = strategies_data[strategy_index]['results']['results_per_number_of_evaluations']
-            perf = np.array([])
-            perf_error = np.array([])
-            perf_error_lower = np.array([])
-            perf_error_upper = np.array([])
-            actual_num_evals = np.array([])
-            cumulative_strategy_time = np.array([])
-            cumulative_compile_time = np.array([])
-            cumulative_execution_time = np.array([])
-            cumulative_total_time = np.array([])
-            collect_xticks.append(list(int(x) for x in results.keys()))
-            iteration_positions = list(list() for _ in results[list(results.keys())[0]][y_metric])
-            for count, key in enumerate(results.keys()):
-                result = results[key]
-
-                # calculate y axis data
-                perf = np.append(perf, result['mean_' + y_metric])
-                perf_error = np.append(perf_error, result['err_' + y_metric])
-
-                # calculate the lower and upper error by dividing the observations (without the middle value) and taking the means
-                observations = result[y_metric]
-                lower_error, upper_error = calculate_lower_upper_error(observations)
-                # print(f"{key} | {result['mean_' + y_metric]}: ml {lower_error} mh {upper_error} | {lower_values} {upper_values}")
-                perf_error_lower = np.append(perf_error_lower, lower_error)
-                perf_error_upper = np.append(perf_error_upper, upper_error)
-
-                for iteration, observation in enumerate(observations):
-                    cache_position = sorted_times.index(observation)
-                    iteration_positions[iteration].append((count + 1) * (cache_position / cache_size))
-
-                # calculate x axis data
-                # mean_actual_num_evals are the mean number of evaluations without invalid configurations, but we want to include the invalid configurations in the number of evaluations for a more complete result
-                # actual_num_evals = np.append(actual_num_evals, result['mean_actual_num_evals'])
-                actual_num_evals = np.append(actual_num_evals, int(key))
-                cumulative_strategy_time = np.append(cumulative_strategy_time, result['mean_cumulative_strategy_time'])
-                cumulative_compile_time = np.append(cumulative_compile_time, result['mean_cumulative_compile_time'])
-                cumulative_execution_time = np.append(cumulative_execution_time, result['mean_cumulative_execution_time'])
-                cumulative_total_time = np.append(cumulative_total_time, result['mean_cumulative_total_time'])
-
-            # set x axis data
-            if x_metric == 'num_evals':
-                x_axis = actual_num_evals
-            elif x_metric == 'strategy_time':
-                x_axis = cumulative_strategy_time
-            elif x_metric == 'compile_time':
-                x_axis = cumulative_compile_time
-            elif x_metric == 'execution_time':
-                x_axis = cumulative_execution_time
-            elif x_metric == 'total_time':
-                x_axis = cumulative_total_time
-            else:
-                raise ValueError("Invalid x-axis metric")
-
-            # plot and add standard deviation to the plot
-            marker = 'o'
             alpha = 1.0
             fill_alpha = 0.2
-            MAE = round(np.mean(perf[1:] - absolute_optimum), 6)
-            # MRE = round(np.mean((perf[1:] - absolute_optimum) / perf[1:]), 6)
-            MNE = round(np.mean((perf[1:] - absolute_optimum) / std), 6)
-            mean_weighted_positions = list()
-            for positions in iteration_positions:
-                mean_weighted_positions.append(np.mean(positions))
-            mean_weighted_position = np.mean(mean_weighted_positions)
-
-            # RMSE = round(np.sqrt(np.mean(np.square(perf[1:] - absolute_optimum))), 6)
-            # NRMSE = round(np.sqrt(np.mean(np.square(perf[1:] - absolute_optimum))) / iqr, 6)
-            # NRMSNE = round(np.sqrt(np.mean(np.square((perf[1:] - absolute_optimum)) / std)) / median, 6)
-            MWP_dict[strategy['display_name']].append((mean_weighted_position, np.std(mean_weighted_positions)))
-            plot_error = plot_errors
-            # TODO change code in if-statement below to reduce cognitive complexity
             if 'bar_group' in strategy:
                 bar_group = strategy['bar_group']
                 marker = bar_groups_markers[bar_group]
-                if bar_group == 'reference':
-                    fill_alpha = 0.2
-                    plot_error = plot_errors
-                elif main_bar_group != '' and bar_group != main_bar_group:
-                    alpha = 0.7
-                    fill_alpha = 0.0
-                    plot_error = False
-                if main_bar_group == 'bo' and bar_group == main_bar_group:
-                    alpha = 1.0
-                    fill_alpha = 0.0
-                    plot_error = False
+
+            # plot the data
             if shaded is True:
-                if plot_error:
-                    ax.fill_between(x_axis, perf_error_lower, perf_error_upper, alpha=fill_alpha, antialiased=True, color=color)
-                ax.plot(x_axis, perf, marker=marker, alpha=alpha, linestyle='--',
-                        label=f"{strategy['display_name']} ({round(mean_weighted_position, 6)}, {MNE})", color=color)
+                if plot_errors:
+                    ax.fill_between(x_axis, y_axis_std_lower, y_axis_std_upper, alpha=fill_alpha, antialiased=True, color=color)
+                ax.plot(x_axis, y_axis, marker=marker, alpha=alpha, linestyle='-', label=f"{strategy['display_name']}", color=color)
             else:
-                ax.errorbar(x_axis, perf, perf_error, marker=marker, alpha=alpha, linestyle='--', label=strategy['display_name'])
+                if plot_errors:
+                    ax.errorbar(x_axis, y_axis, y_axis_std, marker=marker, alpha=alpha, linestyle='--', label=strategy['display_name'])
+                else:
+                    ax.plot(x_axis, y_axis, marker=marker, linestyle='-', label=f"{strategy['display_name']}", color=color)
 
-        # set the y-axis limit
-        y_axis_lower_limit = absolute_optimum - ((ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.01)
-        ax.set_ylim(y_axis_lower_limit, ax.get_ylim()[1])
-        if 'y_axis_upper_limit' in info:
-            y_axis_upper_limit = info['y_axis_upper_limit']
-            if y_axis_upper_limit is not None:
-                y_axis_lower_limit = absolute_optimum - ((y_axis_upper_limit - ax.get_ylim()[0]) * 0.01)
-                ax.set_ylim(y_axis_lower_limit, y_axis_upper_limit)
-
-        # plot setup
-        if len(collect_xticks) > 0:
-            ax.set_xticks(collect_xticks[0])
-        ax.set_xlabel(self.x_metric_displayname[x_metric])
-        ax.set_ylabel(self.y_metric_displayname[y_metric])
+        # finalize plot
+        ax.set_xlabel(self.x_metric_displayname['kerneltime'])
+        ax.set_ylabel(self.y_metric_displayname['objective_baseline' if subtract_baseline else 'objective'])
         ax.legend()
-        if plot_error is False:
+        if plot_errors is False:
             ax.grid(axis='y', zorder=0, alpha=0.7)
-
-    def plot_strategy_runtime_barchart(self, ax: plt.Axes, strategies_data: list, info: dict, main_bar_group=''):
-        strategies_ordered = self.order_strategies(main_bar_group)
-        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-
-        x_axis = list()
-        total_times_mean = np.array([])
-        total_times_err = np.array([])
-        for strategy_index, strategy in enumerate(strategies_ordered):
-            if 'hide' in strategy.keys() and strategy['hide']:
-                continue
-            x_axis.append(strategy['display_name'])
-            repeats = strategy['repeats']
-            results = strategies_data[strategy_index]['results']
-            miliseconds_to_seconds = lambda ms: ms / 1000
-            total_times_mean = np.append(total_times_mean, miliseconds_to_seconds(results['total_time_mean']) / repeats)
-            total_times_err = np.append(total_times_err, miliseconds_to_seconds(results['total_time_err']) / repeats)
-
-        ax.bar(x_axis, total_times_mean, color=colors)
-        ax.errorbar(x_axis, total_times_mean, yerr=total_times_err, fmt="o", color='r')
-        ax.set_ylabel('Time in seconds per full strategy run')
 
 
 if __name__ == "__main__":

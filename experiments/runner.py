@@ -6,6 +6,8 @@ from typing import Any, Tuple
 import time as python_time
 import warnings
 import yappi
+from sklearn.isotonic import IsotonicRegression
+from scipy.interpolate import interp1d
 
 from metrics import units, quantity
 from caching import CachedObject
@@ -51,8 +53,8 @@ def tune(kernel, kernel_name: str, device_name: str, strategy: dict, tune_option
     return res, total_time_ms
 
 
-def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, expected_results: dict, default_records: dict, profiling: bool,
-                    optimization='time', remove_duplicate_results=True) -> dict:
+def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, expected_results: dict, profiling: bool,
+                    optimization_objective='time', remove_duplicate_results=True, resolution_multiplier = 1, time_interpolated_axis = None, y_min = None, y_median = None) -> dict:
     """ Executes strategies to obtain (or retrieve from cache) the statistical data """
     print(f"Running {strategy['display_name']}")
     nums_of_evaluations = strategy['nums_of_evaluations']
@@ -85,8 +87,8 @@ def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, 
                 report_multiple_attempts(rep, len_res, len_unique_res, strategy['repeats'])
             res, total_time_ms = tune(kernel, kernel_name, device_name, strategy, tune_options, profiling)
             len_res = len(res)
-            # check if there are only invalid configs, if so, try again
-            only_invalid = len_res < 1 or min(res[:20], key=lambda x: x['time'])['time'] == 1e20
+            # check if there are only invalid configs in the first 10 fevals, if so, try again
+            only_invalid = len_res < 1 or min(res[:10], key=lambda x: x['time'])['time'] == 1e20
             unique_res = remove_duplicates(res, remove_duplicate_results)
             len_unique_res = len(unique_res)
             attempt += 1
@@ -104,95 +106,100 @@ def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, 
         stats.save(path, type="pstat")    # pylint: disable=no-member
         yappi.clear_stats()
 
-    # transpose and summarise to get the results per number of evaluations
-    strategy['nums_of_evaluations'] = nums_of_evaluations
-    results_to_write = deepcopy(expected_results)
-    results_to_write = transpose_results(results_to_write, repeated_results, optimization, strategy)
-    results_to_write = summarise_results(default_records, results_to_write, total_time_results, strategy, tune_options)
-    return results_to_write
+    # create the interpolated results from the expected results
+    results = create_interpolated_results(repeated_results, expected_results, optimization_objective, resolution_multiplier, time_interpolated_axis, y_min, y_median)
 
+    # check that all expected results are present
+    for key in results.keys():
+        if results[key] is None:
+            raise ValueError(f"Expected result {key} was not filled in the results")
+    return results
 
-def transpose_results(results_to_write: dict, repeated_results: list, optimization: str, strategy: dict) -> dict:
-    """ Transposes the results for summarise_results to go from num. of evaluations per result to results per num. of evaluations """
-    nums_of_evaluations = strategy['nums_of_evaluations']
+def create_interpolated_results(repeated_results: list, expected_results: dict, optimization_objective: str, resolution_multiplier, time_interpolated_axis: np.ndarray, y_min = None, y_median = None) -> np.ndarray:
+    """ Creates a monotonically non-increasing curve from the combined objective datapoints across repeats for a strategy, interpolated for (size_x * resolution_multiplier) points """
+    results = deepcopy(expected_results)
+
+    # find the minimum objective value and time spent for each evaluation per repeat
+    dtype = [('total_time', 'float64'), ('objective_value', 'float64'), ('objective_value_std', 'float64')]
+    total_times = list()
+    best_found_objective_values = list()
+    num_function_evaluations = list()
     for res_index, res in enumerate(repeated_results):
-        for num_of_evaluations in nums_of_evaluations:
-            limited_res = res[:num_of_evaluations]
-            if optimization == 'time':
-                best = min(limited_res, key=lambda x: x['time'])
-            elif optimization == 'GFLOP/s':
-                best = max(limited_res, key=lambda x: x['GFLOP/s'])
-            time = best['time']
-            if time == 1e20:
-                error_message = f"({res_index+1}/{len(repeated_results)}) Only invalid values found after {num_of_evaluations} evaluations for strategy {strategy['display_name']}. Values: {limited_res}"
-                raise ValueError(error_message)
-            gflops = best['GFLOP/s'] if 'GFLOP/s' in best else np.nan
-            cumulative_execution_time = sum(x['time'] for x in limited_res if x['time'] != 1e20)
-            loss = best['loss'] if 'loss' in best else np.nan
-            noise = best['noise'] if 'noise' in best else np.nan
+        # extract the objective and time spent per configuration
+        repeated_results[res_index] = np.array(list(tuple([sum(r['times']) / 1000, r[optimization_objective], np.std(r[optimization_objective + 's'])]) for r in res if r['time'] != 1e20), dtype=dtype)
+        # take the minimum of the objective and the sum of the time
+        obj_minimum = 1e20
+        total_time = 0
+        for r_index, r in enumerate(repeated_results[res_index]):
+            total_time += r[0]
+            obj_minimum = min(r[1], obj_minimum)
+            obj_std = r[2]
+            repeated_results[res_index][r_index] = np.array(tuple([total_time, obj_minimum, obj_std]), dtype=dtype)
+        total_times.append(total_time)
+        best_found_objective_values.append(obj_minimum)
+        num_function_evaluations.append(len(repeated_results[res_index]))
 
-            # write to the results to the arrays
-            result = results_to_write['results_per_number_of_evaluations'][str(num_of_evaluations)]
-            result['actual_num_evals'] = np.append(result['actual_num_evals'], len(limited_res))
-            result['time'] = np.append(result['time'], time)
-            result['GFLOP/s'] = np.append(result['GFLOP/s'], gflops)
-            result['loss'] = np.append(result['loss'], loss)
-            result['noise'] = np.append(result['noise'], noise)
-            result['cumulative_execution_time'] = np.append(result['cumulative_execution_time'], cumulative_execution_time)
-    return results_to_write
+    # write to the results
+    if 'total_times' in expected_results:
+        results['total_times'] = total_times
+    if 'best_found_objective_values' in expected_results:
+        results['best_found_objective_values'] = best_found_objective_values
+    if 'num_function_evaluations' in expected_results:
+        results['num_function_evaluations'] = num_function_evaluations
 
+    # combine the results across repeats to be in time-order
+    combined_results = np.concatenate(repeated_results)
+    combined_results = np.sort(combined_results, order='total_time') # sort objective is the total times increasing
+    x = combined_results['total_time']
+    y = combined_results['objective_value']
+    y_std = combined_results['objective_value_std']
+    # assert that the total time is monotonically non-decreasing
+    assert all(a<=b for a, b in zip(x, x[1:]))
 
-def summarise_results(default_records: dict, expected_results: dict, total_time_results: np.ndarray, strategy: dict, tune_options: dict) -> dict:
-    """ For every number of evaluations specified, find the best and collect details on it """
+    # create the new x-array to interpolate
+    if time_interpolated_axis is None:
+        time_interpolated_axis = np.linspace(x[0], x[-1], len(x) * resolution_multiplier)
+        assert len(time_interpolated_axis) == len(x) * resolution_multiplier
+        assert x[0] == time_interpolated_axis[0]
+        assert x[-1] == time_interpolated_axis[-1]
+    x_new = time_interpolated_axis
 
-    # create the results dict for this strategy
-    nums_of_evaluations = strategy['nums_of_evaluations']
-    results_to_write = deepcopy(expected_results)
+    # # calculate polynomial fit
+    # z = np.polyfit(x, y, 10)
+    # f = np.poly1d(z)
+    # y_polynomial = f(x_new)
+    # # make it monotonically non-increasing (this is a very slow function due to O(n^2) complexity)
+    # y_polynomial = list(min(y_polynomial[:i]) if i > 0 else y_polynomial[i] for i in range(len(y_polynomial)))
 
-    # add the total time in miliseconds
-    total_time_mean = np.mean(total_time_results)
-    total_time_std = np.std(total_time_results)
-    total_time_mean_per_eval = total_time_mean / nums_of_evaluations[-1]
-    print("Total mean time: {} ms, std {}".format(round(total_time_mean, 3), round(total_time_std, 3)))
-    results_to_write['total_time_mean'] = total_time_mean
-    results_to_write['total_time_err'] = total_time_std
+    # calculate Isotonic Regression
+    # the median is used as the maximum because as number of samples approaches infinity, the probability that the found minimum is <= median approaches 1
+    ir = IsotonicRegression(increasing=False, y_min=y_min, y_max=y_median, out_of_bounds='clip')
+    ir.fit(x, y)
+    y_isotonic_regression = ir.predict(x_new)
+    # # assert that monotonicity is satisfied in the isotonic regression
+    # assert all(a>=b for a, b in zip(y_isotonic_regression, y_isotonic_regression[1:]))
 
-    for num_of_evaluations in nums_of_evaluations:
-        result = results_to_write['results_per_number_of_evaluations'][str(num_of_evaluations)]
+    # do linear interpolation for the other attributes
+    f_li_y_std = interp1d(x, y_std, fill_value='extrapolate', assume_sorted=True)
+    y_std_li = f_li_y_std(x_new)
 
-        # automatically summarise from default_records
-        # TODO look into calculation of compile and execution times
-        result['mean_cumulative_compile_time'] = 0
-        cumulative_total_time = total_time_mean_per_eval * num_of_evaluations
-        mean_runtimes = ['mean_cumulative_strategy_time', 'mean_cumulative_total_time']
-        for key in default_records.keys():
-            if key in mean_runtimes:
-                continue
-            if key == 'mean_cumulative_strategy_time':
-                result[
-                    'mean_cumulative_strategy_time'] = cumulative_total_time - result['mean_cumulative_compile_time'] - result['mean_cumulative_execution_time']
-                if tune_options['simulation_mode']:
-                    result['mean_cumulative_strategy_time'] = cumulative_total_time
-            elif key == 'mean_cumulative_total_time':
-                result['mean_cumulative_total_time'] = cumulative_total_time + result['mean_cumulative_compile_time'] + result['mean_cumulative_execution_time']
-                if tune_options['simulation_mode']:
-                    result['mean_cumulative_total_time'] = cumulative_total_time
-            elif key == 'mean_cumulative_compile_time':
-                continue
-            elif key.startswith('mean_'):
-                result[key] = np.mean(result[key.replace('mean_', '')])
-            elif key.startswith('err_'):
-                result[key] = np.std(result[key.replace('err_', '')])
+    # write to the results
+    if 'interpolated_time' in expected_results:
+        results['interpolated_time'] = time_interpolated_axis   # TODO maybe not write this for every strategy, but once
+    if 'interpolated_objective' in expected_results:
+        results['interpolated_objective'] = y_isotonic_regression
+    if 'interpolated_objective_std' in expected_results:
+        results['interpolated_objective_std'] = y_std_li
 
-        # summarise execution times
-        # TODO do this properly
+    return results
 
-        # check for errors
-        if 'err_actual_num_evals' in default_records.keys() and result['err_actual_num_evals'] != 0:
-            raise ValueError('The number of actual evaluations over the runs has varied: {}'.format(result['actual_num_evals']))
-        if 'mean_actual_num_evals' in default_records.keys() and result['mean_actual_num_evals'] != num_of_evaluations:
-            print(
-                "The set number of evaluations ({}) is not equal to the actual number of evaluations ({}). Try increasing the fraction or maxiter in strategy options."
-                .format(num_of_evaluations, result['mean_actual_num_evals']))
-
-    return results_to_write
+    # # plot
+    # import matplotlib.pyplot as plt
+    # plt.plot(x,y,'o')
+    # # plt.plot(x_new, y_polynomial)
+    # plt.plot(x_new, y_isotonic_regression)
+    # # plt.xlim([x[0]-1, x[-1] + 1 ])
+    # plt.xlabel("Cumulative time in seconds")
+    # plt.ylabel("Minimum value found")
+    # plt.show()
+    # exit(0)

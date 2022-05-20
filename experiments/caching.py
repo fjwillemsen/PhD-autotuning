@@ -1,8 +1,10 @@
 import os
 import json
 import numpy as np
+import h5py
 from typing import Optional, Dict, Any
 
+# TODO implement h5py instead of JSON
 
 class NumpyEncoder(json.JSONEncoder):
     """ JSON encoder for NumPy types, from https://www.programmersought.com/article/18271066028/ """
@@ -66,6 +68,8 @@ class CachedObject():
 
     def recursively_compare_dict_keys(self, dict_elem, compare_elem) -> bool:
         """ Recursively go trough a dict to check whether the keys match, returns true if they match """
+        if compare_elem is None:
+            return True
         if isinstance(dict_elem, list):
             for idx in range(min(len(dict_elem), len(compare_elem))):
                 if self.recursively_compare_dict_keys(dict_elem[idx], compare_elem[idx]) is False:
