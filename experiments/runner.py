@@ -49,12 +49,12 @@ def tune(kernel, kernel_name: str, device_name: str, strategy: dict, tune_option
     warnings.simplefilter("default", UserWarning)
     total_end_time = python_time.perf_counter()
     total_time_ms = round((total_end_time - total_start_time) * 1000)
-    # TODO when profiling, should the total_time_ms not be the time from profiling_stats? Otherwise we're timing the profiling code as well
+    # TODO when profiling, should the total_time_ms not be the time from profiling_stats? Otherwise we are timing the profiling code as well
     return res, total_time_ms
 
 
-def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, expected_results: dict, profiling: bool,
-                    optimization_objective='time', remove_duplicate_results=True, resolution_multiplier = 1, time_interpolated_axis = None, y_min = None, y_median = None) -> dict:
+def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, expected_results: dict, profiling: bool, objective_value_at_cutoff_point: float,
+                    optimization_objective='time', remove_duplicate_results=True, time_resolution = 1e4, time_interpolated_axis = None, y_min = None, y_median = None) -> dict:
     """ Executes strategies to obtain (or retrieve from cache) the statistical data """
     print(f"Running {strategy['display_name']}")
     nums_of_evaluations = strategy['nums_of_evaluations']
@@ -77,7 +77,6 @@ def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, 
 
     # repeat the strategy as specified
     repeated_results = list()
-    mean_normalized_errors = list()
     total_time_results = np.array([])
     for rep in progressbar.progressbar(range(strategy['repeats']), redirect_stdout=True):
         attempt = 0
@@ -106,17 +105,19 @@ def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, 
         stats.save(path, type="pstat")    # pylint: disable=no-member
         yappi.clear_stats()
 
-    # create the interpolated results from the expected results
-    results = create_interpolated_results(repeated_results, expected_results, optimization_objective, resolution_multiplier, time_interpolated_axis, y_min, y_median)
+    # create the interpolated results from the repeated results
+    results = create_interpolated_results(repeated_results, expected_results, optimization_objective, objective_value_at_cutoff_point, time_resolution, time_interpolated_axis, y_min, y_median)
 
     # check that all expected results are present
     for key in results.keys():
+        if key == 'cutoff_quantile':
+            continue
         if results[key] is None:
             raise ValueError(f"Expected result {key} was not filled in the results")
     return results
 
-def create_interpolated_results(repeated_results: list, expected_results: dict, optimization_objective: str, resolution_multiplier, time_interpolated_axis: np.ndarray, y_min = None, y_median = None) -> np.ndarray:
-    """ Creates a monotonically non-increasing curve from the combined objective datapoints across repeats for a strategy, interpolated for (size_x * resolution_multiplier) points """
+def create_interpolated_results(repeated_results: list, expected_results: dict, optimization_objective: str, objective_value_at_cutoff_point: float, time_resolution: int, time_interpolated_axis: np.ndarray, y_min = None, y_median = None) -> np.ndarray:
+    """ Creates a monotonically non-increasing curve from the combined objective datapoints across repeats for a strategy, interpolated for [time_resolution] points """
     results = deepcopy(expected_results)
 
     # find the minimum objective value and time spent for each evaluation per repeat
@@ -158,10 +159,25 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
 
     # create the new x-array to interpolate
     if time_interpolated_axis is None:
-        time_interpolated_axis = np.linspace(x[0], x[-1], len(x) * resolution_multiplier)
-        assert len(time_interpolated_axis) == len(x) * resolution_multiplier
-        assert x[0] == time_interpolated_axis[0]
-        assert x[-1] == time_interpolated_axis[-1]
+        # first create a temporary interpolation using the absolute results
+        _ir = IsotonicRegression(increasing=False, y_min=y_min, y_max=y_median, out_of_bounds='clip')
+        _ir.fit(x, y)
+        _y_isotonic_regression = _ir.predict(x)
+
+        # find the cutoff point using the temporary interpolation
+        try:
+            cutoff_index = np.argwhere(_y_isotonic_regression <= objective_value_at_cutoff_point)[0]
+            assert cutoff_index == int(cutoff_index)    # ensure that it is an integer
+            cutoff_index = int(cutoff_index)
+            # print(f"Percentage of baseline search space used to get to cutoff quantile: {(cutoff_index / _y_isotonic_regression.size)*100}%")
+        except IndexError:
+            raise ValueError(f"The baseline has not reliably found the cutoff quantile, either decrease the cutoff or increase the allowed time.")
+
+        # create the baseline time axis
+        cutoff_time = x[cutoff_index]
+        time_interpolated_axis = np.linspace(x[0], cutoff_time, time_resolution)
+    else:
+        assert len(time_interpolated_axis) == time_resolution
     x_new = time_interpolated_axis
 
     # # calculate polynomial fit
@@ -193,7 +209,7 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
 
     return results
 
-    # # plot
+    # # TODO plot
     # import matplotlib.pyplot as plt
     # plt.plot(x,y,'o')
     # # plt.plot(x_new, y_polynomial)

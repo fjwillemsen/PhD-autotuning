@@ -1,5 +1,6 @@
 """ Visualize the results of the experiments """
 import argparse
+from cProfile import label
 from collections import defaultdict
 import numpy as np
 from copy import deepcopy
@@ -39,7 +40,13 @@ def calculate_lower_upper_error(observations: list) -> Tuple[float, float]:
 
 def smoothing_filter(array: np.ndarray, window_length: int) -> np.ndarray:
     """ Create a rolling average where the kernel size is the smoothing factor """
+    window_length = int(window_length)
+    import pandas as pd
+    d = pd.Series(array)
+    return d.rolling(window_length).mean()
     from scipy.signal import savgol_filter
+    if window_length % 2 == 0:
+        window_length += 1
     return savgol_filter(array, window_length, 3)
 
 
@@ -53,11 +60,13 @@ class Visualize():
         'execution_time': 'Evaluation execution time taken in miliseconds',
         'total_time': 'Average total time taken in miliseconds',
         'kerneltime': 'Total kernel compilation and runtime in seconds',
+        'aggregate_time': 'Relative time to cutoff point',
     })
 
     y_metric_displayname = dict({
         'objective': 'Best found objective function value',
         'objective_baseline': 'Best found objective function value relative to baseline',
+        'aggregate_objective': 'Aggregate objective',
         'time': 'Best found kernel time in miliseconds',
         'GFLOP/s': 'GFLOP/s',
     })
@@ -77,7 +86,6 @@ class Visualize():
             self.max_num_evals = max(max(num_evals), self.max_num_evals)
 
         # visualize
-        cutoff_quantile = self.experiment['cutoff_quantile']
         all_strategies_curves = list()
         for gpu_name in self.experiment['GPUs']:
             for kernel_name in self.experiment['kernels']:
@@ -104,42 +112,51 @@ class Visualize():
                 # visualize the results
                 info = kernels_device_info[gpu_name]['kernels'][kernel_name]
                 subtract_baseline = self.experiment['relative_to_baseline']
-                strategies_curves = self.get_strategies_curves(strategies_data, info, cutoff_quantile, subtract_baseline=subtract_baseline)
-                self.plot_strategies_curves(axs[0], strategies_data, strategies_curves, info, cutoff_quantile, subtract_baseline=subtract_baseline)
+                strategies_curves = self.get_strategies_curves(strategies_data, info, subtract_baseline=subtract_baseline)
+                self.plot_strategies_curves(axs[0], strategies_data, strategies_curves, info, subtract_baseline=subtract_baseline)
                 all_strategies_curves.append(strategies_curves)
 
                 # finalize the figure and display it
                 fig.tight_layout()
                 plt.show()
 
+        # plot the aggregated data
+        fig, axs = plt.subplots(ncols=1, figsize=(15, 8))    # if multiple subplots, pass the axis to the plot function with axs[0] etc.
+        if not isinstance(axs, list):
+            axs = [axs]
+        title = f"Aggregated Data\nkernels: {', '.join(self.experiment['kernels'])}\nGPUs: {', '.join(self.experiment['GPUs'])}"
+        fig.canvas.manager.set_window_title(title)
+        fig.suptitle(title)
+
+        # gather the aggregate y axis for each strategy
         print("\n")
+        strategies_aggregated = list()
         for strategy_index, strategy in enumerate(self.strategies):
             perf = list()
+            y_axis = list()
             for strategies_curves in all_strategies_curves:
                 for strategy_curve in strategies_curves['strategies']:
                     if strategy_curve['strategy_index'] == strategy_index:
                         perf.append(strategy_curve['performance'])
+                        y_axis.append(strategy_curve['y_axis'])
             print(f"{strategy['display_name']} performance across kernels: {np.mean(perf)}")
+            y_axis = np.array(y_axis)
+            strategies_aggregated.append(np.mean(y_axis, axis=0))
 
-    def get_strategies_curves(self, strategies_data: list, info: dict, cutoff_quantile: float, subtract_baseline=True, main_bar_group='') -> dict:
+        # finalize the figure and display it
+        self.plot_aggregated_curves(axs[0], strategies_aggregated)
+        fig.tight_layout()
+        plt.show()
+
+    def get_strategies_curves(self, strategies_data: list, info: dict, subtract_baseline=True, smoothing=False, smoothing_factor=100) -> dict:
+        """ Extract the strategies results """
         # get the baseline
         baseline_result = strategies_data[0]['results']
         x_axis = np.array(baseline_result['interpolated_time'])
         y_axis_baseline = np.array(baseline_result['interpolated_objective'])
 
-        # find the cutoff point
-        # the cutoff point is the time it takes the baseline to find <= [quantile]% of the absolute optimum
-        sorted_objective_values = np.array(info['sorted_times'])
-        objective_value_at_quantile = np.quantile(sorted_objective_values, 1-cutoff_quantile)   # sorted in ascending order, so inverse quantile
-        try:
-            cutoff_point = np.argwhere(y_axis_baseline <= objective_value_at_quantile)[0]
-            assert cutoff_point == int(cutoff_point)    # ensure that it is an integer
-            cutoff_point = int(cutoff_point)
-        except IndexError:
-            raise ValueError(f"The baseline has not reliably found the {cutoff_quantile} cutoff quantile, either decrease the cutoff or increase the allowed time.")
-        # print(f"Percentage of baseline search space used to get {cutoff_quantile} cutoff quantile: {(cutoff_point / y_axis_baseline.size)*100}%")
-        x_axis = x_axis[:cutoff_point]
-        y_axis_baseline = y_axis_baseline[:cutoff_point]
+        if smoothing:
+            y_axis_baseline = smoothing_filter(y_axis_baseline, y_axis_baseline.size/smoothing_factor)
 
         # create resulting dict
         strategies_curves = dict({
@@ -158,19 +175,25 @@ class Visualize():
             # get the data
             strategy = strategies_data[strategy_index]
             results = strategy['results']
-            y_axis = np.array(results['interpolated_objective'])[:cutoff_point]
-            y_axis_std = np.array(results['interpolated_objective_std'])[:cutoff_point]
+            y_axis = np.array(results['interpolated_objective'])
+            y_axis_std = np.array(results['interpolated_objective_std'])
             y_axis_std_lower = y_axis_std
             y_axis_std_upper = y_axis_std
+
+            # apply smoothing
+            if smoothing:
+                y_axis = smoothing_filter(y_axis, y_axis.size/smoothing_factor)
 
             # find out where the global optimum is found and substract the baseline
             # found_opt = np.argwhere(y_axis == absolute_optimum)
             if subtract_baseline:
-                y_axis =  y_axis - y_axis_baseline
+                # y_axis =  y_axis - y_axis_baseline
+                y_axis = y_axis / y_axis_baseline
+
 
             # quantify the performance of this strategy
             if subtract_baseline:
-                # use average distance from random
+                # use mean distance
                 performance = np.mean(y_axis)
             else:
                 # use area under curve approach
@@ -248,6 +271,15 @@ class Visualize():
         ax.legend()
         if plot_errors is False:
             ax.grid(axis='y', zorder=0, alpha=0.7)
+
+
+    def plot_aggregated_curves(self, ax: plt.Axes, strategies_aggregated: list):
+        for strategy_index, y_axis in enumerate(strategies_aggregated):
+            ax.plot(y_axis, label=self.strategies[strategy_index]['display_name'])
+
+        ax.set_xlabel(self.x_metric_displayname['aggregate_time'])
+        ax.set_ylabel(self.y_metric_displayname['aggregate_objective'])
+        ax.legend()
 
 
 if __name__ == "__main__":

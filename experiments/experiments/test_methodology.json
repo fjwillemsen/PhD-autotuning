@@ -8,7 +8,7 @@
   "GPUs": [
     "RTX_2070_SUPER"
   ],
-  "resolution_multiplier": 1,
+  "resolution": 1e4,
   "cutoff_quantile": 0.99,
   "relative_to_baseline": true,
   "strategy_defaults": {
@@ -84,9 +84,48 @@
       "name": "ga",
       "strategy": "genetic_algorithm",
       "display_name": "GA",
-      "repeats": 50,
       "options": {
         "max_fevals": 500
+      }
+    },
+    {
+      "name": "bayes_opt_ei",
+      "strategy": "bayes_opt",
+      "display_name": "BO EI",
+      "repeats": 10,
+      "options": {
+        "max_fevals": 500,
+        "method": "ei"
+      }
+    },
+    {
+      "name": "bayes_opt_multi-advanced",
+      "strategy": "bayes_opt",
+      "display_name": "BO multi-advanced",
+      "repeats": 10,
+      "options": {
+        "max_fevals": 500,
+        "method": "multi-advanced"
+      }
+    },
+    {
+      "name": "new_bayes_opt_ei-lhs",
+      "strategy": "bayes_opt_GPyTorch_lean",
+      "display_name": "New BO EI LHS",
+      "options": {
+        "max_fevals": 500,
+        "method": "ei",
+        "initialsamplemethod": "lhs"
+      }
+    },
+    {
+      "name": "new_bayes_opt_poi-minmax",
+      "strategy": "bayes_opt_GPyTorch_lean",
+      "display_name": "New BO POI minmax",
+      "options": {
+        "max_fevals": 500,
+        "method": "poi",
+        "initialsamplemethod": "minmax"
       }
     }
   ]

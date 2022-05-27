@@ -62,6 +62,7 @@ def create_expected_results() -> dict:
     """ Creates a dict to put the expected results into """
     expected_results = dict({
         'total_times': None,
+        'cutoff_quantile': None,
         'num_function_evaluations': None,
         'best_found_objective_values': None,
         'interpolated_time': None,
@@ -71,14 +72,16 @@ def create_expected_results() -> dict:
     return expected_results
 
 
-def execute_experiment(filepath: str, profiling: bool, kernel_info_stats: dict = None) -> Tuple[dict, dict, dict]:
+def execute_experiment(filepath: str, profiling: bool, kernel_info_stats: dict) -> Tuple[dict, dict, dict]:
     """ Executes the experiment by retrieving it from the cache or running it """
     experiment = get_experiment(filepath)
     print(f"Starting experiment \'{experiment['name']}\'")
     kernel_path = experiment.get('kernel_path', "")
-    resolution_multiplier = experiment.get('resolution_multiplier', 1)
-    if int(resolution_multiplier) != resolution_multiplier:
-        raise ValueError(f"The resolution_multiplier must be an integer, yet is {resolution_multiplier}.")
+    cutoff_quantile = experiment.get('cutoff_quantile', 0.99)
+    time_resolution = experiment.get('resolution', 1e4)
+    if int(time_resolution) != time_resolution:
+        raise ValueError(f"The resolution must be an integer, yet is {time_resolution}.")
+    time_resolution = int(time_resolution)
     change_directory("../cached_data_used" + kernel_path)
     strategies = get_strategies(experiment)
     kernel_names = experiment['kernels']
@@ -90,10 +93,11 @@ def execute_experiment(filepath: str, profiling: bool, kernel_info_stats: dict =
         caches[gpu_name] = dict()
         for index, kernel in enumerate(kernels):
             kernel_name = kernel_names[index]
+            stats_info = kernel_info_stats[gpu_name]['kernels'][kernel_name]
+            objective_value_at_cutoff_point = np.quantile(np.array(stats_info['sorted_times']), 1-cutoff_quantile)   # sorted in ascending order, so inverse quantile
             y_min = None
             y_median = None
-            if kernel_info_stats is not None:
-                stats_info = kernel_info_stats[gpu_name]['kernels'][kernel_name]
+            if 'absolute_optimum' in stats_info and 'median' in stats_info:
                 y_min = stats_info['absolute_optimum']
                 y_median = stats_info['median']
             print(f"  running {kernel_name} on {gpu_name}")
@@ -107,13 +111,17 @@ def execute_experiment(filepath: str, profiling: bool, kernel_info_stats: dict =
                 expected_results = create_expected_results()
                 if 'ignore_cache' not in strategy and baseline_executed is False:
                     cached_data = cache.get_strategy_results(strategy['name'], strategy['options'], strategy['repeats'], expected_results)
-                    if cached_data is not None:
+                    if cached_data is not None and 'cutoff_quantile' in cached_data['results'] and cached_data['results']['cutoff_quantile'] == cutoff_quantile:
                         print("| retrieved from cache")
                         if baseline_time_interpolated is None and 'is_baseline' in strategy and strategy['is_baseline'] is True:
                             baseline_time_interpolated = cached_data['results']['interpolated_time']
                         continue
+
                 # execute each strategy that is not in the cache
-                strategy_results = collect_results(kernel, kernel_name, gpu_name, strategy, expected_results, profiling, resolution_multiplier=resolution_multiplier, time_interpolated_axis=baseline_time_interpolated, y_min=y_min, y_median=y_median)
+                strategy_results = collect_results(kernel, kernel_name, gpu_name, strategy, expected_results, profiling, objective_value_at_cutoff_point, time_resolution=time_resolution, time_interpolated_axis=baseline_time_interpolated, y_min=y_min, y_median=y_median)
+                if 'cutoff_quantile' in expected_results:
+                    strategy_results['cutoff_quantile'] = cutoff_quantile
+
                 # if this strategy is used as the baseline, keep its x-axis (time dimension) as the baseline along which the other values are interpolated
                 if baseline_time_interpolated is None and 'is_baseline' in strategy and strategy['is_baseline'] is True:
                     baseline_time_interpolated = strategy_results['interpolated_time']
