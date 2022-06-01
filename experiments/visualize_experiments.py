@@ -274,7 +274,7 @@ class Visualize():
 
     def plot_aggregated_curves(self, ax: plt.Axes, strategies_aggregated: list):
         for strategy_index, y_axis in enumerate(strategies_aggregated):
-            ax.plot(y=y_axis, label=self.strategies[strategy_index]['display_name'])
+            ax.plot(y_axis, label=self.strategies[strategy_index]['display_name'])
 
         ax.set_xlabel(self.x_metric_displayname['aggregate_time'])
         ax.set_ylabel(self.y_metric_displayname['aggregate_objective'])

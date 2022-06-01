@@ -76,6 +76,8 @@ def create_expected_results() -> dict:
         'interpolated_time': None,
         'interpolated_objective': None,
         'interpolated_objective_std': None,
+        'interpolated_objective_error_upper': None,
+        'interpolated_objective_error_upper': None,
     })
     return expected_results
 

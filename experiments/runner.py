@@ -24,6 +24,12 @@ def remove_duplicates(res: list, remove_duplicate_results: bool):
             unique_res.append(result)
     return unique_res
 
+def smoothing_filter(array: np.ndarray, window_length: int) -> np.ndarray:
+    from scipy.signal import savgol_filter
+    if window_length % 2 == 0:
+        window_length += 1
+    return savgol_filter(array, window_length, 3)
+
 def get_isotonic_curve(x: np.ndarray, y: np.ndarray, x_new: np.ndarray, package='isotonic', increasing=False, npoints=1000, power=2, ymin=None, ymax=None) -> np.ndarray:
     """ Get the isotonic regression curve fitted to x_new using package 'sklearn' or 'isotonic' """
     # check if the assumptions that the input arrays are numpy arrays holds
@@ -173,9 +179,9 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
     # combine the results across repeats to be in time-order
     combined_results = np.concatenate(repeated_results)
     combined_results = np.sort(combined_results, order='total_time') # sort objective is the total times increasing
-    x = combined_results['total_time']
-    y = combined_results['objective_value']
-    y_std = combined_results['objective_value_std']
+    x: np.ndarray = combined_results['total_time']
+    y: np.ndarray = combined_results['objective_value']
+    y_std: np.ndarray = combined_results['objective_value_std']
     # assert that the total time is monotonically non-decreasing
     assert all(a<=b for a, b in zip(x, x[1:]))
 
@@ -214,9 +220,30 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
     # # assert that monotonicity is satisfied in the isotonic regression
     # assert all(a>=b for a, b in zip(y_isotonic_regression, y_isotonic_regression[1:]))
 
+    # do linear interpolation for the errors
+    # get the distance between the isotonic curve and the actual datapoint for each datapoint
+    error: np.ndarray = y - get_isotonic_curve(x, y, x, ymin=y_min, ymax=y_median, npoints=npoints)
+    # f_error_interpolated = interp1d(x, np.abs(error), bounds_error=False, fill_value=tuple([error[0], error[-1]]))
+    # error_interpolated = f_error_interpolated(x_new)
+    error_lower_indices = np.where(error <= 0)
+    error_upper_indices = np.where(error >= 0)
+    x_lower = x[error_lower_indices]
+    error_lower = error[error_lower_indices]
+    x_upper = x[error_upper_indices]
+    error_upper = error[error_upper_indices]
+    # # interpolate to the baseline time axis, when extrapolating use the first or last value
+    # f_error_lower_interpolated = interp1d(x_lower, error_lower, bounds_error=False, fill_value=tuple([error_lower[0], error_lower[-1]]))
+    # f_error_upper_interpolated = interp1d(x_upper, error_upper, bounds_error=False, fill_value=tuple([error_upper[0], error_upper[-1]]))
+    # error_lower_interpolated: np.ndarray = smoothing_filter(f_error_lower_interpolated(x_new), 100)
+    # error_upper_interpolated: np.ndarray = smoothing_filter(f_error_upper_interpolated(x_new), 100)
+
+    # alternative: do isotonic regression for the upper and lower values seperately
+    error_lower_interpolated = get_isotonic_curve(x_lower, error_lower, x_new, npoints=npoints, ymax=0)
+    error_upper_interpolated = get_isotonic_curve(x_upper, error_upper, x_new, npoints=npoints, ymin=0)
+
     # do linear interpolation for the other attributes
-    f_li_y_std = interp1d(x, y_std, fill_value='extrapolate', assume_sorted=True)
-    y_std_li = f_li_y_std(x_new)
+    f_li_y_std = interp1d(x, y_std, fill_value='extrapolate')
+    y_std_li: np.ndarray = f_li_y_std(x_new)
 
     # write to the results
     if 'interpolated_time' in expected_results:
@@ -225,6 +252,10 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
         results['interpolated_objective'] = y_isotonic_regression
     if 'interpolated_objective_std' in expected_results:
         results['interpolated_objective_std'] = y_std_li
+    if 'interpolated_objective_error_lower' in expected_results:
+        results['interpolated_objective_error_lower'] = error_lower_interpolated
+    if 'interpolated_objective_error_upper' in expected_results:
+        results['interpolated_objective_error_upper'] = error_upper_interpolated
 
     return results
 
@@ -235,10 +266,12 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
     # plt.plot(x,y,',')
     # # plt.plot(x_new, y_polynomial)
     # plt.plot(x, _y_isotonic_regression, label="temp_cutoff")
-    # plt.plot(x_new, y_isotonic_regression_1, label="SKLearn")
+    # # plt.plot(x_new, y_isotonic_regression_1, label="SKLearn")
     # plt.plot(x_new, y_isotonic_regression, label="Isotonic")
-    # plt.plot(x_new, y_isotonic_regression_3, label="Isotonic p=1.1")
-    # # plt.xlim([x[0]-1, x[-1] + 1 ])
+    # # plt.plot(x_new, y_isotonic_regression_3, label="Isotonic p=1.1")
+    # plt.plot(x_new, y_isotonic_regression+error_lower_interpolated, label="Lower error")
+    # plt.plot(x_new, y_isotonic_regression+error_upper_interpolated, label="Upper error")
+    # plt.xlim([x_new[0]-1, x_new[-1] + 1 ])
     # plt.xlabel("Cumulative time in seconds")
     # plt.ylabel("Minimum value found")
     # plt.legend()
