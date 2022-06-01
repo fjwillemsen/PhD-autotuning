@@ -1,15 +1,11 @@
 """ Visualize the results of the experiments """
 import argparse
-from cProfile import label
-from collections import defaultdict
 import numpy as np
-from copy import deepcopy
 from typing import Tuple
 import matplotlib.pyplot as plt
 import warnings
 from sklearn.metrics import auc
 
-from caching import CachedObject
 from experiments2 import execute_experiment, create_expected_results
 
 import sys
@@ -41,9 +37,9 @@ def calculate_lower_upper_error(observations: list) -> Tuple[float, float]:
 def smoothing_filter(array: np.ndarray, window_length: int) -> np.ndarray:
     """ Create a rolling average where the kernel size is the smoothing factor """
     window_length = int(window_length)
-    import pandas as pd
-    d = pd.Series(array)
-    return d.rolling(window_length).mean()
+    # import pandas as pd
+    # d = pd.Series(array)
+    # return d.rolling(window_length).mean()
     from scipy.signal import savgol_filter
     if window_length % 2 == 0:
         window_length += 1
@@ -66,7 +62,7 @@ class Visualize():
     y_metric_displayname = dict({
         'objective': 'Best found objective function value',
         'objective_baseline': 'Best found objective function value relative to baseline',
-        'aggregate_objective': 'Aggregate objective',
+        'aggregate_objective': 'Aggregate best found objective function value relative to baseline',
         'time': 'Best found kernel time in miliseconds',
         'GFLOP/s': 'GFLOP/s',
     })
@@ -148,12 +144,17 @@ class Visualize():
         fig.tight_layout()
         plt.show()
 
-    def get_strategies_curves(self, strategies_data: list, info: dict, subtract_baseline=True, smoothing=False, smoothing_factor=100) -> dict:
+    def get_strategies_curves(self, strategies_data: list, info: dict, subtract_baseline=True, smoothing=False, minimization=True, smoothing_factor=100) -> dict:
         """ Extract the strategies results """
         # get the baseline
         baseline_result = strategies_data[0]['results']
         x_axis = np.array(baseline_result['interpolated_time'])
         y_axis_baseline = np.array(baseline_result['interpolated_objective'])
+        y_min = info['absolute_optimum'] if minimization else info['median']
+        y_max = info['median'] if minimization else info['absolute_optimum']
+
+        # normalize
+        y_axis_baseline = (y_axis_baseline - y_min) / (y_max - y_min)
 
         if smoothing:
             y_axis_baseline = smoothing_filter(y_axis_baseline, y_axis_baseline.size/smoothing_factor)
@@ -179,6 +180,9 @@ class Visualize():
             y_axis_std = np.array(results['interpolated_objective_std'])
             y_axis_std_lower = y_axis_std
             y_axis_std_upper = y_axis_std
+
+            # normalize
+            y_axis = (y_axis - y_min) / (y_max - y_min)
 
             # apply smoothing
             if smoothing:
@@ -279,6 +283,8 @@ class Visualize():
 
         ax.set_xlabel(self.x_metric_displayname['aggregate_time'])
         ax.set_ylabel(self.y_metric_displayname['aggregate_objective'])
+        num_ticks = 11
+        ax.set_xticks(np.linspace(0, y_axis.size, num_ticks), np.round(np.linspace(0, 1, num_ticks), 2))
         ax.legend()
 
 

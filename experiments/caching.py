@@ -1,7 +1,6 @@
 import os
 import json
 import numpy as np
-import h5py
 from typing import Optional, Dict, Any
 
 # TODO implement h5py instead of JSON

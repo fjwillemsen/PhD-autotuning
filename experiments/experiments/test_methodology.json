@@ -9,6 +9,7 @@
     "RTX_2070_SUPER"
   ],
   "resolution": 1e4,
+  "curve_segment_factor": 0.05,
   "cutoff_quantile": 0.99,
   "relative_to_baseline": true,
   "strategy_defaults": {
@@ -116,16 +117,6 @@
         "max_fevals": 500,
         "method": "ei",
         "initialsamplemethod": "lhs"
-      }
-    },
-    {
-      "name": "new_bayes_opt_poi-minmax",
-      "strategy": "bayes_opt_GPyTorch_lean",
-      "display_name": "New BO POI minmax",
-      "options": {
-        "max_fevals": 500,
-        "method": "poi",
-        "initialsamplemethod": "minmax"
       }
     }
   ]

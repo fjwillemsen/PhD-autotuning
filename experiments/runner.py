@@ -1,4 +1,5 @@
 """ Interface to run an experiment on Kernel Tuner """
+from cProfile import label
 from copy import deepcopy
 import numpy as np
 import progressbar
@@ -6,11 +7,11 @@ from typing import Any, Tuple
 import time as python_time
 import warnings
 import yappi
-from sklearn.isotonic import IsotonicRegression
 from scipy.interpolate import interp1d
+from sklearn.isotonic import IsotonicRegression
+from isotonic.isotonic import LpIsotonicRegression
 
 from metrics import units, quantity
-from caching import CachedObject
 
 record_data = ['mean_actual_num_evals']
 
@@ -24,6 +25,29 @@ def remove_duplicates(res: list, remove_duplicate_results: bool):
         if result not in unique_res:
             unique_res.append(result)
     return unique_res
+
+def get_isotonic_curve(x: np.ndarray, y: np.ndarray, x_new: np.ndarray, package='isotonic', increasing=False, npoints=1000, power=2, ymin=None, ymax=None) -> np.ndarray:
+    """ Get the isotonic regression curve fitted to x_new using package 'sklearn' or 'isotonic' """
+    # check if the assumptions that the input arrays are numpy arrays holds
+    assert isinstance(x, np.ndarray)
+    assert isinstance(y, np.ndarray)
+    assert isinstance(x_new, np.ndarray)
+    if package == 'sklearn':
+        if npoints != 1000:
+            warnings.warn("npoints argument is impotent for sklearn package")
+        if power != 2:
+            warnings.warn("power argument is impotent for sklearn package")
+        ir = IsotonicRegression(increasing=increasing, y_min=ymin, y_max=ymax, out_of_bounds='clip')
+        ir.fit(x, y)
+        return ir.predict(x_new)
+    elif package == 'isotonic':
+        ir = LpIsotonicRegression(npoints, increasing=increasing, power=power).fit(x, y)
+        y_isotonic_regression = ir.predict_proba(x_new)
+        if ymin is not None or ymax is not None:
+            y_isotonic_regression = np.clip(y_isotonic_regression, ymin, ymax)
+        return y_isotonic_regression
+    raise ValueError(f"Package name {package} is not a valid package name")
+
 
 
 def tune(kernel, kernel_name: str, device_name: str, strategy: dict, tune_options: dict, profiling: bool) -> Tuple[list, int]:
@@ -54,7 +78,7 @@ def tune(kernel, kernel_name: str, device_name: str, strategy: dict, tune_option
 
 
 def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, expected_results: dict, profiling: bool, objective_value_at_cutoff_point: float,
-                    optimization_objective='time', remove_duplicate_results=True, time_resolution = 1e4, time_interpolated_axis = None, y_min = None, y_median = None) -> dict:
+                    optimization_objective='time', remove_duplicate_results=True, time_resolution = 1e4, time_interpolated_axis = None, y_min = None, y_median = None, segment_factor = 0.05) -> dict:
     """ Executes strategies to obtain (or retrieve from cache) the statistical data """
     print(f"Running {strategy['display_name']}")
     nums_of_evaluations = strategy['nums_of_evaluations']
@@ -106,18 +130,18 @@ def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, 
         yappi.clear_stats()
 
     # create the interpolated results from the repeated results
-    results = create_interpolated_results(repeated_results, expected_results, optimization_objective, objective_value_at_cutoff_point, time_resolution, time_interpolated_axis, y_min, y_median)
+    results = create_interpolated_results(repeated_results, expected_results, optimization_objective, objective_value_at_cutoff_point, time_resolution, time_interpolated_axis, y_min, y_median, segment_factor)
 
     # check that all expected results are present
     for key in results.keys():
-        if key == 'cutoff_quantile':
+        if key == 'cutoff_quantile' or key == 'curve_segment_factor':
             continue
         if results[key] is None:
             raise ValueError(f"Expected result {key} was not filled in the results")
     return results
 
-def create_interpolated_results(repeated_results: list, expected_results: dict, optimization_objective: str, objective_value_at_cutoff_point: float, time_resolution: int, time_interpolated_axis: np.ndarray, y_min = None, y_median = None) -> np.ndarray:
-    """ Creates a monotonically non-increasing curve from the combined objective datapoints across repeats for a strategy, interpolated for [time_resolution] points """
+def create_interpolated_results(repeated_results: list, expected_results: dict, optimization_objective: str, objective_value_at_cutoff_point: float, time_resolution: int, time_interpolated_axis: np.ndarray, y_min = None, y_median = None, segment_factor=0.05) -> np.ndarray:
+    """ Creates a monotonically non-increasing curve from the combined objective datapoints across repeats for a strategy, interpolated for [time_resolution] points, using [time_resolution * segment_factor] piecewise linear segments """
     results = deepcopy(expected_results)
 
     # find the minimum objective value and time spent for each evaluation per repeat
@@ -157,12 +181,10 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
     # assert that the total time is monotonically non-decreasing
     assert all(a<=b for a, b in zip(x, x[1:]))
 
-    # create the new x-array to interpolate
+    # create the new x-axis array to interpolate
     if time_interpolated_axis is None:
-        # first create a temporary interpolation using the absolute results
-        _ir = IsotonicRegression(increasing=False, y_min=y_min, y_max=y_median, out_of_bounds='clip')
-        _ir.fit(x, y)
-        _y_isotonic_regression = _ir.predict(x)
+        # first create a temporary interpolation using the absolute results, using sklearn because this has arbitrary number of segments
+        _y_isotonic_regression = get_isotonic_curve(x, y, x, ymin=y_min, ymax=y_median, package='sklearn')
 
         # find the cutoff point using the temporary interpolation
         try:
@@ -179,6 +201,7 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
     else:
         assert len(time_interpolated_axis) == time_resolution
     x_new = time_interpolated_axis
+    npoints = int(len(x_new)*segment_factor)
 
     # # calculate polynomial fit
     # z = np.polyfit(x, y, 10)
@@ -189,9 +212,7 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
 
     # calculate Isotonic Regression
     # the median is used as the maximum because as number of samples approaches infinity, the probability that the found minimum is <= median approaches 1
-    ir = IsotonicRegression(increasing=False, y_min=y_min, y_max=y_median, out_of_bounds='clip')
-    ir.fit(x, y)
-    y_isotonic_regression = ir.predict(x_new)
+    y_isotonic_regression = get_isotonic_curve(x, y, x_new, ymin=y_min, ymax=y_median, npoints=npoints)
     # # assert that monotonicity is satisfied in the isotonic regression
     # assert all(a>=b for a, b in zip(y_isotonic_regression, y_isotonic_regression[1:]))
 
@@ -210,12 +231,18 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
     return results
 
     # # TODO plot
+    # y_isotonic_regression_1 = get_isotonic_curve(x, y, x_new, ymin=y_min, ymax=y_median, package='sklearn', npoints=npoints)
+    # y_isotonic_regression_3 = get_isotonic_curve(x, y, x_new, ymin=y_min, ymax=y_median, npoints=npoints, power=1.1)
     # import matplotlib.pyplot as plt
-    # plt.plot(x,y,'o')
+    # plt.plot(x,y,',')
     # # plt.plot(x_new, y_polynomial)
-    # plt.plot(x_new, y_isotonic_regression)
+    # plt.plot(x, _y_isotonic_regression, label="temp_cutoff")
+    # plt.plot(x_new, y_isotonic_regression_1, label="SKLearn")
+    # plt.plot(x_new, y_isotonic_regression, label="Isotonic")
+    # plt.plot(x_new, y_isotonic_regression_3, label="Isotonic p=1.1")
     # # plt.xlim([x[0]-1, x[-1] + 1 ])
     # plt.xlabel("Cumulative time in seconds")
     # plt.ylabel("Minimum value found")
+    # plt.legend()
     # plt.show()
     # exit(0)
