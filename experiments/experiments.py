@@ -5,13 +5,20 @@ from importlib import import_module
 import json
 import os
 import sys
-from typing import Tuple
+from typing import Tuple, Any
 import pathvalidate
 from copy import deepcopy
 import numpy as np
 
 from runner import collect_results
 from caching import CachedObject
+
+
+def get_searchspaces_info_stats() -> dict[str, Any]:
+    """ read the searchspaces info statistics dictionary from file """
+    with open("../cached_data_used/kernel_info.json") as file:
+        kernels_device_info_data = file.read()
+    return json.loads(kernels_device_info_data)
 
 
 def change_directory(path: str):
@@ -29,8 +36,8 @@ def get_experiment(filename: str) -> dict:
     path = filename
     if not filename.startswith(folder):
         path = folder + filename
-    path = pathvalidate.sanitize_filepath(path)
-    with open(path) as file:
+    safe_path = pathvalidate.sanitize_filepath(path)
+    with open(safe_path) as file:
         experiment = json.load(file)
         return experiment
 
@@ -73,7 +80,7 @@ def create_expected_results() -> dict:
     return expected_results
 
 
-def execute_experiment(filepath: str, profiling: bool, kernel_info_stats: dict) -> Tuple[dict, dict, dict]:
+def execute_experiment(filepath: str, profiling: bool, searchspaces_info_stats: dict) -> Tuple[dict, dict, dict]:
     """ Executes the experiment by retrieving it from the cache or running it """
     experiment = get_experiment(filepath)
     print(f"Starting experiment \'{experiment['name']}\'")
@@ -91,12 +98,13 @@ def execute_experiment(filepath: str, profiling: bool, kernel_info_stats: dict) 
     kernels = list(import_module(kernel_name) for kernel_name in kernel_names)
 
     # execute each strategy in the experiment per GPU and kernel
-    caches = dict()
+    caches: dict[str, dict[str, Any]] = dict()
+    gpu_name: str
     for gpu_name in experiment['GPUs']:
         caches[gpu_name] = dict()
         for index, kernel in enumerate(kernels):
             kernel_name = kernel_names[index]
-            stats_info = kernel_info_stats[gpu_name]['kernels'][kernel_name]
+            stats_info = searchspaces_info_stats[gpu_name]['kernels'][kernel_name]
             objective_value_at_cutoff_point = np.quantile(np.array(stats_info['sorted_times']), 1-cutoff_quantile)   # sorted in ascending order, so inverse quantile
             y_min = None
             y_median = None
@@ -131,6 +139,8 @@ def execute_experiment(filepath: str, profiling: bool, kernel_info_stats: dict) 
                 if baseline_time_interpolated is None and 'is_baseline' in strategy and strategy['is_baseline'] is True:
                     baseline_time_interpolated = strategy_results['interpolated_time']
                     baseline_executed = True    # if the baseline has been (re)executed, the other cached strategies must be re-executed as the interpolated time axis has changed
+                if baseline_time_interpolated is None:
+                    raise ValueError(f"baseline_time_interpolated should not be None here, check whether the first strategy has 'is_baseline' set to True")
                 # double check that the interpolated results are as expected
                 assert np.array_equal(baseline_time_interpolated, strategy_results['interpolated_time'])
                 assert len(baseline_time_interpolated) == len(strategy_results['interpolated_objective'])
@@ -149,4 +159,4 @@ if __name__ == "__main__":
     if experiment_filepath is None:
         raise ValueError("Invalid '-experiment' option. Run 'experiments.py -h' to read more about the options.")
 
-    execute_experiment(experiment_filepath, profiling=False)
+    execute_experiment(experiment_filepath, profiling=False, searchspaces_info_stats=get_searchspaces_info_stats())

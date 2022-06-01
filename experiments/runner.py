@@ -3,7 +3,7 @@ from cProfile import label
 from copy import deepcopy
 import numpy as np
 import progressbar
-from typing import Any, Tuple
+from typing import Any, Tuple, Dict
 import time as python_time
 import warnings
 import yappi
@@ -107,11 +107,11 @@ def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, 
             if attempt > 0:
                 report_multiple_attempts(rep, len_res, len_unique_res, strategy['repeats'])
             res, total_time_ms = tune(kernel, kernel_name, device_name, strategy, tune_options, profiling)
-            len_res = len(res)
+            len_res: int = len(res)
             # check if there are only invalid configs in the first 10 fevals, if so, try again
             only_invalid = len_res < 1 or min(res[:10], key=lambda x: x['time'])['time'] == 1e20
             unique_res = remove_duplicates(res, remove_duplicate_results)
-            len_unique_res = len(unique_res)
+            len_unique_res: int = len(unique_res)
             attempt += 1
         # register the results
         repeated_results.append(unique_res)
@@ -138,7 +138,7 @@ def collect_results(kernel, kernel_name: str, device_name: str, strategy: dict, 
             raise ValueError(f"Expected result {key} was not filled in the results")
     return results
 
-def create_interpolated_results(repeated_results: list, expected_results: dict, optimization_objective: str, objective_value_at_cutoff_point: float, time_resolution: int, time_interpolated_axis: np.ndarray, y_min = None, y_median = None, segment_factor=0.05) -> np.ndarray:
+def create_interpolated_results(repeated_results: list, expected_results: dict, optimization_objective: str, objective_value_at_cutoff_point: float, time_resolution: int, time_interpolated_axis: np.ndarray, y_min = None, y_median = None, segment_factor=0.05) -> Dict[Any, Any]:
     """ Creates a monotonically non-increasing curve from the combined objective datapoints across repeats for a strategy, interpolated for [time_resolution] points, using [time_resolution * segment_factor] piecewise linear segments """
     results = deepcopy(expected_results)
 

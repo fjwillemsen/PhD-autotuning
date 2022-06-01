@@ -1,23 +1,18 @@
 """ Visualize the results of the experiments """
 import argparse
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Any
 import matplotlib.pyplot as plt
 import warnings
 from sklearn.metrics import auc
 
-from experiments import execute_experiment, create_expected_results
+from experiments import execute_experiment, create_expected_results, get_searchspaces_info_stats
 
 import sys
-
 sys.path.append("..")
-# TODO from cached_data_used.kernel_info_generator import kernels_device_info # check whether this is necessary
+# TODO from cached_data_used.kernel_info_generator import searchspaces_info_stats # check whether this is necessary
 
-# read the kernel info dictionary from file
-import json
-with open("../cached_data_used/kernel_info.json") as file:
-    kernels_device_info_data = file.read()
-kernels_device_info = json.loads(kernels_device_info_data)
+searchspaces_info_stats = get_searchspaces_info_stats()
 
 # The kernel information per device and device information for visualization purposes
 marker_variatons = ['v', 's', '*', '1', '2', 'd', 'P', 'X']
@@ -70,7 +65,7 @@ class Visualize():
     def __init__(self, experiment_filename: str) -> None:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            self.experiment, self.strategies, self.caches = execute_experiment(experiment_filename, profiling=False, kernel_info_stats=kernels_device_info)
+            self.experiment, self.strategies, self.caches = execute_experiment(experiment_filename, profiling=False, searchspaces_info_stats=searchspaces_info_stats)
         print("\n\n")
 
         # find the minimum and maximum number of evaluations over all strategies
@@ -106,7 +101,7 @@ class Visualize():
                     strategies_data.append(cached_data)
 
                 # visualize the results
-                info = kernels_device_info[gpu_name]['kernels'][kernel_name]
+                info = searchspaces_info_stats[gpu_name]['kernels'][kernel_name]
                 subtract_baseline = self.experiment['relative_to_baseline']
                 strategies_curves = self.get_strategies_curves(strategies_data, info, subtract_baseline=subtract_baseline)
                 self.plot_strategies_curves(axs[0], strategies_data, strategies_curves, info, subtract_baseline=subtract_baseline)
@@ -129,14 +124,14 @@ class Visualize():
         strategies_aggregated = list()
         for strategy_index, strategy in enumerate(self.strategies):
             perf = list()
-            y_axis = list()
+            y_axis_temp = list()
             for strategies_curves in all_strategies_curves:
                 for strategy_curve in strategies_curves['strategies']:
                     if strategy_curve['strategy_index'] == strategy_index:
                         perf.append(strategy_curve['performance'])
-                        y_axis.append(strategy_curve['y_axis'])
+                        y_axis_temp.append(strategy_curve['y_axis'])
             print(f"{strategy['display_name']} performance across kernels: {np.mean(perf)}")
-            y_axis = np.array(y_axis)
+            y_axis = np.array(y_axis_temp)
             strategies_aggregated.append(np.mean(y_axis, axis=0))
 
         # finalize the figure and display it
@@ -160,7 +155,7 @@ class Visualize():
             y_axis_baseline = smoothing_filter(y_axis_baseline, y_axis_baseline.size/smoothing_factor)
 
         # create resulting dict
-        strategies_curves = dict({
+        strategies_curves: dict[str, Any] = dict({
             'baseline': {
                 'x_axis': x_axis,
                 'y_axis': y_axis_baseline
@@ -279,7 +274,7 @@ class Visualize():
 
     def plot_aggregated_curves(self, ax: plt.Axes, strategies_aggregated: list):
         for strategy_index, y_axis in enumerate(strategies_aggregated):
-            ax.plot(y_axis, label=self.strategies[strategy_index]['display_name'])
+            ax.plot(y=y_axis, label=self.strategies[strategy_index]['display_name'])
 
         ax.set_xlabel(self.x_metric_displayname['aggregate_time'])
         ax.set_ylabel(self.y_metric_displayname['aggregate_objective'])

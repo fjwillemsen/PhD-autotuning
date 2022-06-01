@@ -10,13 +10,13 @@ from random import uniform as randuni
 from collections import OrderedDict
 import numpy as np
 from math import sin, cos, pi, sqrt, ceil
+from typing import Tuple
 
 import progressbar
 import multiprocessing
 
-from kernel_tuner import util
-from kernel_tuner.interface import Options
-from kernel_tuner.runners import simulation
+from kernel_tuner import util               # type: ignore
+from kernel_tuner.interface import Options  # type: ignore
 
 
 # generates noise to be added to the function evaluations
@@ -126,7 +126,7 @@ multi_threaded = True
 
 
 # loop over the function to evaluate and store in cache
-def eval_and_store(param_config: dict) -> (str, dict):
+def eval_and_store(param_config: dict) -> Tuple[str, dict]:
     param_config_keystring = keystring(param_config)
     # evaluate the function
     if repeat_evals > 1:
@@ -136,7 +136,7 @@ def eval_and_store(param_config: dict) -> (str, dict):
         value = np.mean(values)
     else:
         value = eval_func(param_config)
-        values = [value]
+        values = np.array([value])
     # store the result in the param config
     param_config['times'] = values
     param_config['time'] = value

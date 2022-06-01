@@ -1,7 +1,7 @@
 import os
 import json
 import numpy as np
-from typing import Optional, Dict, Any
+from typing import Union, Optional, Dict, Any
 
 class NumpyEncoder(json.JSONEncoder):
     """ JSON encoder for NumPy types, from https://www.programmersought.com/article/18271066028/ """
@@ -19,8 +19,7 @@ class NumpyEncoder(json.JSONEncoder):
 class CachedObject():
     """ Class for managing cached results """
 
-    def __init__(self, kernel_name: str, device_name: str, strategies: dict = None):
-
+    def __init__(self, kernel_name: str, device_name: str, strategies: dict):
         try:
             cache = CacheInterface.read(kernel_name, device_name)
             # print("Cache with type: ", type(cache), ":\n ", cache)
@@ -36,7 +35,7 @@ class CachedObject():
 
             self.kernel_name = kernel_name
             self.device_name = device_name
-            self.obj: Dict[str, Any] = {
+            self.obj = {
                 "kernel_name": kernel_name,
                 "device_name": device_name,
                 "strategies": strategies_dict
@@ -91,7 +90,7 @@ class CachedObject():
             return cached_data
         return None
 
-    def set_strategy(self, strategy: dict(), results: dict()):
+    def set_strategy(self, strategy: dict[str, Any], results: dict[str, Any]):
         """ Sets a strategy and its results """
         strategy_name = strategy['name']
         # delete old strategy if any
@@ -107,29 +106,38 @@ class CachedObject():
 class CacheInterface:
     """ Interface for cache filesystem interaction """
 
+    @staticmethod
     def file_name(kernel_name: str, device_name: str) -> str:    # pylint: disable=no-self-argument
         """ Combine the variables into the target filename """
         return f"cached_plot_{kernel_name}_{device_name}.json"
 
+    @staticmethod
     def file_path(file_name: str) -> str:
         """ Returns the absolute file path """
         # TODO fix this so it works more flexibly for nested folders
         return os.path.abspath(f"cached_visualizations/{file_name}")
 
+    @staticmethod
     def read(kernel_name: str, device_name: str) -> Dict[str, Any]:    # pylint: disable=no-self-argument
         """ Read and parse a cachefile """
         filename = CacheInterface.file_name(kernel_name, device_name)
         with open(CacheInterface.file_path(filename)) as json_file:
             return json.load(json_file)
 
+    @staticmethod
     def write(cached_object: Dict[str, Any]):    # pylint: disable=no-self-argument
         """ Serialize and write a cachefile """
         filename = CacheInterface.file_name(cached_object['kernel_name'], cached_object['device_name'])    # pylint: disable=unsubscriptable-object
         with open(CacheInterface.file_path(filename), 'w') as json_file:
             json.dump(cached_object, json_file, cls=NumpyEncoder)
 
+    @staticmethod
     def delete(kernel_name: str, device_name: str) -> bool:    # pylint: disable=no-self-argument
-        """ Delete a cachefile """
-        import os
-        filename = CacheInterface.file_name(kernel_name, device_name)
-        os.remove(CacheInterface.file_path(filename))
+        """ Delete a cachefile, returns True for completion and False if file can not be deleted """
+        try:
+            import os
+            filename = CacheInterface.file_name(kernel_name, device_name)
+            os.remove(CacheInterface.file_path(filename))
+            return True
+        except OSError:
+            return False
