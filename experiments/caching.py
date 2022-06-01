@@ -3,8 +3,6 @@ import json
 import numpy as np
 from typing import Optional, Dict, Any
 
-# TODO implement h5py instead of JSON
-
 class NumpyEncoder(json.JSONEncoder):
     """ JSON encoder for NumPy types, from https://www.programmersought.com/article/18271066028/ """
 

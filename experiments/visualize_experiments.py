@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import warnings
 from sklearn.metrics import auc
 
-from experiments2 import execute_experiment, create_expected_results
+from experiments import execute_experiment, create_expected_results
 
 import sys
 

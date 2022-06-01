@@ -11,8 +11,6 @@ from scipy.interpolate import interp1d
 from sklearn.isotonic import IsotonicRegression
 from isotonic.isotonic import LpIsotonicRegression
 
-from metrics import units, quantity
-
 record_data = ['mean_actual_num_evals']
 
 
