@@ -29,7 +29,7 @@ def calculate_lower_upper_error(observations: list) -> Tuple[float, float]:
     upper_error = np.mean(upper_values)
     return lower_error, upper_error
 
-def smoothing_filter(array: np.ndarray, window_length: int) -> np.ndarray:
+def smoothing_filter(array: np.ndarray, window_length: int, a_min = None, a_max = None) -> np.ndarray:
     """ Create a rolling average where the kernel size is the smoothing factor """
     window_length = int(window_length)
     # import pandas as pd
@@ -38,7 +38,10 @@ def smoothing_filter(array: np.ndarray, window_length: int) -> np.ndarray:
     from scipy.signal import savgol_filter
     if window_length % 2 == 0:
         window_length += 1
-    return savgol_filter(array, window_length, 3)
+    smoothed = savgol_filter(array, window_length, 3)
+    if a_min is not None or a_max is not None:
+        smoothed = np.clip(smoothed, a_min, a_max)
+    return smoothed
 
 
 class Visualize():
@@ -149,7 +152,8 @@ class Visualize():
         y_max = info['median'] if minimization else info['absolute_optimum']
 
         # normalize
-        y_axis_baseline = (y_axis_baseline - y_min) / (y_max - y_min)
+        if subtract_baseline:
+            y_axis_baseline = (y_axis_baseline - y_min) / (y_max - y_min)
 
         if smoothing:
             y_axis_baseline = smoothing_filter(y_axis_baseline, y_axis_baseline.size/smoothing_factor)
@@ -173,11 +177,15 @@ class Visualize():
             results = strategy['results']
             y_axis = np.array(results['interpolated_objective'])
             y_axis_std = np.array(results['interpolated_objective_std'])
-            y_axis_std_lower = y_axis_std
-            y_axis_std_upper = y_axis_std
+            y_axis_std_lower = np.array(results['interpolated_objective_error_lower'])
+            y_axis_std_upper = np.array(results['interpolated_objective_error_upper'])
+            window_length = min(max(int(len(y_axis)*0.5), 100), len(y_axis))
+            y_axis_std_lower = smoothing_filter(y_axis_std_lower, window_length, a_max=y_axis)
+            y_axis_std_upper = smoothing_filter(y_axis_std_upper, window_length, a_min=y_axis)
 
             # normalize
-            y_axis = (y_axis - y_min) / (y_max - y_min)
+            if subtract_baseline:
+                y_axis = (y_axis - y_min) / (y_max - y_min)
 
             # apply smoothing
             if smoothing:
@@ -215,7 +223,7 @@ class Visualize():
         return strategies_curves
 
 
-    def plot_strategies_curves(self, ax: plt.Axes, strategies_data: list, strategies_curves: dict, info: dict, shaded=True, plot_errors=False, subtract_baseline=True):
+    def plot_strategies_curves(self, ax: plt.Axes, strategies_data: list, strategies_curves: dict, info: dict, shaded=True, plot_errors=True, subtract_baseline=True):
         """ Plots all optimization strategy curves """
         colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 

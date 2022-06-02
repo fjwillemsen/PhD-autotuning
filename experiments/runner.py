@@ -24,12 +24,6 @@ def remove_duplicates(res: list, remove_duplicate_results: bool):
             unique_res.append(result)
     return unique_res
 
-def smoothing_filter(array: np.ndarray, window_length: int) -> np.ndarray:
-    from scipy.signal import savgol_filter
-    if window_length % 2 == 0:
-        window_length += 1
-    return savgol_filter(array, window_length, 3)
-
 def get_isotonic_curve(x: np.ndarray, y: np.ndarray, x_new: np.ndarray, package='isotonic', increasing=False, npoints=1000, power=2, ymin=None, ymax=None) -> np.ndarray:
     """ Get the isotonic regression curve fitted to x_new using package 'sklearn' or 'isotonic' """
     # check if the assumptions that the input arrays are numpy arrays holds
@@ -220,26 +214,59 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
     # # assert that monotonicity is satisfied in the isotonic regression
     # assert all(a>=b for a, b in zip(y_isotonic_regression, y_isotonic_regression[1:]))
 
-    # do linear interpolation for the errors
-    # get the distance between the isotonic curve and the actual datapoint for each datapoint
-    error: np.ndarray = y - get_isotonic_curve(x, y, x, ymin=y_min, ymax=y_median, npoints=npoints)
-    # f_error_interpolated = interp1d(x, np.abs(error), bounds_error=False, fill_value=tuple([error[0], error[-1]]))
-    # error_interpolated = f_error_interpolated(x_new)
-    error_lower_indices = np.where(error <= 0)
-    error_upper_indices = np.where(error >= 0)
-    x_lower = x[error_lower_indices]
-    error_lower = error[error_lower_indices]
-    x_upper = x[error_upper_indices]
-    error_upper = error[error_upper_indices]
-    # # interpolate to the baseline time axis, when extrapolating use the first or last value
-    # f_error_lower_interpolated = interp1d(x_lower, error_lower, bounds_error=False, fill_value=tuple([error_lower[0], error_lower[-1]]))
-    # f_error_upper_interpolated = interp1d(x_upper, error_upper, bounds_error=False, fill_value=tuple([error_upper[0], error_upper[-1]]))
-    # error_lower_interpolated: np.ndarray = smoothing_filter(f_error_lower_interpolated(x_new), 100)
-    # error_upper_interpolated: np.ndarray = smoothing_filter(f_error_upper_interpolated(x_new), 100)
+    # get the errors by snapping the original x-values to the closest x_new-values, assumes both x and x_new are sorted in increasing order
+    curr_index = 0
+    x_snapped_temp = list()
+    for x_val in x:
+        try:
+            while abs(x_val - x_new[curr_index+1]) < abs(x_val - x_new[curr_index]):
+                curr_index += 1
+            x_snapped_temp.append(curr_index)
+        except IndexError:
+            x_snapped_temp.append(x_new.size - 1)
+    snapped_indices = np.array(x_snapped_temp)  # an array of shape x with indices pointing to x_new
+    error_snapped = y - y_isotonic_regression[snapped_indices]
 
-    # alternative: do isotonic regression for the upper and lower values seperately
-    error_lower_interpolated = get_isotonic_curve(x_lower, error_lower, x_new, npoints=npoints, ymax=0)
-    error_upper_interpolated = get_isotonic_curve(x_upper, error_upper, x_new, npoints=npoints, ymin=0)
+    # seperate the lower and upper error
+    error_lower_indices = np.where(error_snapped <= 0)
+    error_upper_indices = np.where(error_snapped >= 0)
+    x_lower = x[error_lower_indices]
+    error_lower = error_snapped[error_lower_indices]
+    x_upper = x[error_upper_indices]
+    error_upper = error_snapped[error_upper_indices]
+
+    # # get the snapped error
+    # x_new_error_lower = snapped_indices[error_lower_indices]
+    # x_new_error_upper = snapped_indices[error_upper_indices]
+    # error_lower_x: np.ndarray = smoothing_filter(x_new[x_new_error_lower], 100)
+    # error_upper_x: np.ndarray = smoothing_filter(x_new[x_new_error_upper], 100)
+
+    # interpolate lower and upper error to x_new
+    f_error_lower_interpolated = interp1d(x_lower, error_lower, bounds_error=False, fill_value=tuple([error_lower[0], error_lower[-1]]))
+    f_error_upper_interpolated = interp1d(x_upper, error_upper, bounds_error=False, fill_value=tuple([error_upper[0], error_upper[-1]]))
+    error_lower_interpolated: np.ndarray = y_isotonic_regression + f_error_lower_interpolated(x_new)
+    error_upper_interpolated: np.ndarray = y_isotonic_regression + f_error_upper_interpolated(x_new)
+
+    # # do linear interpolation for the errors
+    # # get the distance between the isotonic curve and the actual datapoint for each datapoint
+    # error: np.ndarray = y - get_isotonic_curve(x, y, x, ymin=y_min, ymax=y_median, npoints=npoints)
+    # # f_error_interpolated = interp1d(x, np.abs(error), bounds_error=False, fill_value=tuple([error[0], error[-1]]))
+    # # error_interpolated = f_error_interpolated(x_new)
+    # error_lower_indices = np.where(error <= 0)
+    # error_upper_indices = np.where(error >= 0)
+    # x_lower = x[error_lower_indices]
+    # error_lower = error[error_lower_indices]
+    # x_upper = x[error_upper_indices]
+    # error_upper = error[error_upper_indices]
+    # # # interpolate to the baseline time axis, when extrapolating use the first or last value
+    # # f_error_lower_interpolated = interp1d(x_lower, error_lower, bounds_error=False, fill_value=tuple([error_lower[0], error_lower[-1]]))
+    # # f_error_upper_interpolated = interp1d(x_upper, error_upper, bounds_error=False, fill_value=tuple([error_upper[0], error_upper[-1]]))
+    # # error_lower_interpolated: np.ndarray = smoothing_filter(f_error_lower_interpolated(x_new), 100)
+    # # error_upper_interpolated: np.ndarray = smoothing_filter(f_error_upper_interpolated(x_new), 100)
+
+    # # alternative: do isotonic regression for the upper and lower values seperately
+    # error_lower_interpolated = get_isotonic_curve(x_lower, error_lower, x_new, npoints=npoints, ymax=0)
+    # error_upper_interpolated = get_isotonic_curve(x_upper, error_upper, x_new, npoints=npoints, ymin=0)
 
     # do linear interpolation for the other attributes
     f_li_y_std = interp1d(x, y_std, fill_value='extrapolate')
@@ -269,8 +296,10 @@ def create_interpolated_results(repeated_results: list, expected_results: dict, 
     # # plt.plot(x_new, y_isotonic_regression_1, label="SKLearn")
     # plt.plot(x_new, y_isotonic_regression, label="Isotonic")
     # # plt.plot(x_new, y_isotonic_regression_3, label="Isotonic p=1.1")
-    # plt.plot(x_new, y_isotonic_regression+error_lower_interpolated, label="Lower error")
-    # plt.plot(x_new, y_isotonic_regression+error_upper_interpolated, label="Upper error")
+    # plt.plot(x_new, error_lower_interpolated, label="lower error interpolated")
+    # plt.plot(x_new, error_upper_interpolated, label="upper error interpolated")
+    # # plt.plot(error_lower_x, y_isotonic_regression[x_new_error_lower] + error_lower, label='lower error')
+    # # plt.plot(error_upper_x, y_isotonic_regression[x_new_error_upper] + error_upper, label='lower error')
     # plt.xlim([x_new[0]-1, x_new[-1] + 1 ])
     # plt.xlabel("Cumulative time in seconds")
     # plt.ylabel("Minimum value found")
