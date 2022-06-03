@@ -186,6 +186,8 @@ class Visualize():
             # normalize
             if subtract_baseline:
                 y_axis = (y_axis - y_min) / (y_max - y_min)
+                y_axis_std_lower = (y_axis_std_lower - y_min) / (y_max - y_min)
+                y_axis_std_upper = (y_axis_std_upper - y_min) / (y_max - y_min)
 
             # apply smoothing
             if smoothing:
@@ -196,6 +198,8 @@ class Visualize():
             if subtract_baseline:
                 # y_axis =  y_axis - y_axis_baseline
                 y_axis = y_axis / y_axis_baseline
+                y_axis_std_lower = y_axis_std_lower / y_axis_baseline
+                y_axis_std_upper = y_axis_std_upper / y_axis_baseline
 
 
             # quantify the performance of this strategy
@@ -244,6 +248,8 @@ class Visualize():
 
         color_index = 0
         marker = ','
+        y_min = np.PINF
+        y_max = np.NINF
         for strategy_curves in strategies_curves['strategies']:
             # get the data
             strategy = strategies_data[strategy_curves['strategy_index']]
@@ -251,6 +257,8 @@ class Visualize():
             y_axis_std = strategy_curves['y_axis_std']
             y_axis_std_lower = strategy_curves['y_axis_std_lower']
             y_axis_std_upper = strategy_curves['y_axis_std_upper']
+            y_min = min(y_min, np.min(y_axis))
+            y_max = max(y_max, np.max(y_axis))
 
             # set colors, transparencies and markers
             color = colors[color_index]
@@ -273,6 +281,7 @@ class Visualize():
                     ax.plot(x_axis, y_axis, marker=marker, linestyle='-', label=f"{strategy['display_name']}", color=color)
 
         # finalize plot
+        ax.axis([np.min(x_axis), np.max(x_axis), y_min*0.9, y_max*1.1])
         ax.set_xlabel(self.x_metric_displayname['kerneltime'])
         ax.set_ylabel(self.y_metric_displayname['objective_baseline' if subtract_baseline else 'objective'])
         ax.legend()

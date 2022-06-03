@@ -59,14 +59,6 @@
       }
     },
     {
-      "name": "mls",
-      "strategy": "mls",
-      "display_name": "MLS",
-      "options": {
-        "max_fevals": 500
-      }
-    },
-    {
       "name": "greedy_mls",
       "strategy": "greedy_mls",
       "display_name": "Greedy MLS",
@@ -78,14 +70,6 @@
       "name": "greedy_ils",
       "strategy": "greedy_ils",
       "display_name": "Greedy ILS",
-      "options": {
-        "max_fevals": 500
-      }
-    },
-    {
-      "name": "ga",
-      "strategy": "genetic_algorithm",
-      "display_name": "GA",
       "options": {
         "max_fevals": 500
       }
