@@ -60,7 +60,9 @@ class Visualize():
     y_metric_displayname = dict({
         'objective': 'Best found objective function value',
         'objective_baseline': 'Best found objective function value relative to baseline',
+        'objective_baseline_max': 'Improvement over random sampling',
         'aggregate_objective': 'Aggregate best found objective function value relative to baseline',
+        'aggregate_objective_max': 'Aggregate improvement over random sampling',
         'time': 'Best found kernel time in miliseconds',
         'GFLOP/s': 'GFLOP/s',
     })
@@ -197,9 +199,9 @@ class Visualize():
             # found_opt = np.argwhere(y_axis == absolute_optimum)
             if subtract_baseline:
                 # y_axis =  y_axis - y_axis_baseline
-                y_axis = y_axis / y_axis_baseline
-                y_axis_std_lower = y_axis_std_lower / y_axis_baseline
-                y_axis_std_upper = y_axis_std_upper / y_axis_baseline
+                y_axis = y_axis_baseline / y_axis
+                y_axis_std_lower = y_axis_baseline / y_axis_std_lower
+                y_axis_std_upper = y_axis_baseline / y_axis_std_upper
 
 
             # quantify the performance of this strategy
@@ -283,7 +285,7 @@ class Visualize():
         # finalize plot
         ax.axis([np.min(x_axis), np.max(x_axis), y_min*0.9, y_max*1.1])
         ax.set_xlabel(self.x_metric_displayname['kerneltime'])
-        ax.set_ylabel(self.y_metric_displayname['objective_baseline' if subtract_baseline else 'objective'])
+        ax.set_ylabel(self.y_metric_displayname['objective_baseline_max' if subtract_baseline else 'objective'])
         ax.legend()
         if plot_errors is False:
             ax.grid(axis='y', zorder=0, alpha=0.7)
@@ -294,7 +296,7 @@ class Visualize():
             ax.plot(y_axis, label=self.strategies[strategy_index]['display_name'])
 
         ax.set_xlabel(self.x_metric_displayname['aggregate_time'])
-        ax.set_ylabel(self.y_metric_displayname['aggregate_objective'])
+        ax.set_ylabel(self.y_metric_displayname['aggregate_objective_max'])
         num_ticks = 11
         ax.set_xticks(np.linspace(0, y_axis.size, num_ticks), np.round(np.linspace(0, 1, num_ticks), 2))
         ax.legend()
