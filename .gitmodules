@@ -10,3 +10,6 @@
 [submodule "BAt"]
 	path = BAt
 	url = https://github.com/benvanwerkhoven/BAT.git
+[submodule "experiments/isotonic"]
+	path = experiments/isotonic
+	url = https://github.com/stucchio/isotonic.git

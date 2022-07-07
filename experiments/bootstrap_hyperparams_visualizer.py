@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 from matplotlib.path import Path
 import matplotlib.patches as patches
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Any
 
 skip_hyperparams_list = ['max_fevals', 'time', 'times', 'strategy_time']
-hyperparam_plot_index = dict()
-hyperparam_nonconstant_names = list()
+hyperparam_plot_index: dict[str, Any] = dict()
+hyperparam_nonconstant_names: list[str] = list()
 
 
 def reload_cache():
@@ -145,8 +145,8 @@ def plot_parallel_coordinates(subfigure, hyperparams: dict, isnumeric: list, one
 
     # make sure the numeric hyperparameters are converted and the others are one-hot encoded
     ynames = list(hyperparams.keys())
-    ys = list(np.dstack(list(hyperparams.values()))[0].tolist())
-    for y in ys:
+    ys_temp = list(np.dstack(list(hyperparams.values()))[0].tolist())
+    for y in ys_temp:
         for i, e in enumerate(y):
             if isnumeric[i]:
                 if np.char.isnumeric(e):
@@ -155,7 +155,7 @@ def plot_parallel_coordinates(subfigure, hyperparams: dict, isnumeric: list, one
                     y[i] = float(e)
             else:
                 y[i] = onehotencoding[i].index(e)
-    ys = np.array(ys)
+    ys = np.array(ys_temp)
 
     # organize the data
     ymins = ys.min(axis=0)
@@ -330,7 +330,7 @@ while True:
         scaled_cmap = cmap(rescale(y_valid))
 
     # obtain the hyperparameters for a parallel coordinates plot
-    hyperparams = dict()
+    hyperparams: dict[str, Any] = dict()
     for hyperparam_name, hyperparam_values in list(values)[0].items():
         if hyperparam_name in skip_hyperparams_list:
             continue
