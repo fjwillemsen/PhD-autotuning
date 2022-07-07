@@ -13,3 +13,6 @@
 [submodule "experiments/isotonic"]
 	path = experiments/isotonic
 	url = https://github.com/stucchio/isotonic.git
+[submodule "autotuning-methodology"]
+	path = autotuning-methodology
+	url = git@github.com:fjwillemsen/autotuning-methodology.git
