@@ -160,8 +160,9 @@ if __name__ == "__main__":
                         except json.decoder.JSONDecodeError:
                             contents = orig_contents[:-2] + "}\n}"
                             data = json.loads(contents)
-                    cache = data['cache']
+                    cache: dict = data['cache']
                     keys, values = list(cache.keys()), cache.values()
+                    # TODO add the total times in the new specified output format so the calculated cutoff can be more precise
                     times = np.array(list(v['time'] for v in values))
                     times = times[times < 1e20]
 
@@ -174,6 +175,7 @@ if __name__ == "__main__":
                     std = np.std(times)
                     q75, q25 = np.percentile(times, [75, 25])
                     iqr = q75 - q25
+                    repeats = len(list(values)[0]['times'])
                     # print(
                     #     f"'absolute_optimum': {minimum},\n'absolute_difference': {maximum-minimum},\n'mean': {mean},\n'median': {median},\n'interquartile_range': {iqr},\n'std': {std},"
                     # )
@@ -187,6 +189,7 @@ if __name__ == "__main__":
                         'std': std,
                         'interquartile_range': iqr,
                         'sorted_times': sorted_times,
+                        'repeats': repeats,
                         'size': len(times),
                     }
                     for key, value in to_add.items():
