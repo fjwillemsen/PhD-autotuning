@@ -9,7 +9,7 @@
 	url = git@github.com:benvanwerkhoven/kernel_tuner_simulation.git
 [submodule "BAT"]
 	path = BAT
-	url = https://github.com/benvanwerkhoven/BAT.git
+	url = https://github.com/NTNU-HPC-Lab/BAT.git
 [submodule "experiments/isotonic"]
 	path = experiments/isotonic
 	url = https://github.com/stucchio/isotonic.git
