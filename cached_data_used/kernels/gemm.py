@@ -4,13 +4,11 @@ import sys
 from collections import OrderedDict
 import os
 
-import logging
-
 import numpy as np
 import kernel_tuner
 
 
-def tune(device_name):
+def tune(device_name: str, strategy="mls", strategy_options=None, verbose=True, quiet=False, simulation_mode=True):
 
     path = os.path.dirname(os.path.realpath(__file__)) + "/gemm/"
 
@@ -30,10 +28,7 @@ def tune(device_name):
     alpha, beta = np.array([1.0, 1.0]).astype(np.float32)
 
     kernel_string = ""
-    files = [
-        "common.opencl", "xgemm_part1.opencl", "xgemm_part2.opencl",
-        "xgemm_part3.opencl"
-    ]
+    files = ["common.opencl", "xgemm_part1.opencl", "xgemm_part2.opencl", "xgemm_part3.opencl"]
     for f in files:
         with open(path + f, "r") as fp:
             kernel_string += fp.read()
@@ -81,26 +76,10 @@ def tune(device_name):
     total_gflops = (float(m) * float(n) * k * 2.0 + 2.0 * float(m) * k) / 1e9
     metrics["GFLOP/s"] = lambda p: total_gflops / (p["time"] / 1e3)
 
-    results, env = kernel_tuner.tune_kernel("Xgemm",
-                                            kernel_string,
-                                            problem_size,
-                                            args,
-                                            tune_params,
-                                            block_size_names=block_size_names,
-                                            lang="OpenCL",
-                                            restrictions=restrict,
-                                            verbose=True,
-                                            compiler_options=["-I" + path],
-                                            grid_div_x=grid_div_x,
-                                            grid_div_y=grid_div_y,
-                                            answer=answer,
-                                            atol=1e-2,
-                                            device=0,
-                                            platform=0,
-                                            metrics=metrics,
-                                            iterations=32,
-                                            cache="../cachefiles/gemm/" +
-                                            device_name)
+    results, env = kernel_tuner.tune_kernel("Xgemm", kernel_string, problem_size, args, tune_params, block_size_names=block_size_names, lang="OpenCL",
+                                            restrictions=restrict, compiler_options=["-I" + path], grid_div_x=grid_div_x, grid_div_y=grid_div_y, answer=answer,
+                                            atol=1e-2, device=0, platform=0, metrics=metrics, iterations=32, cache="cachefiles/gemm/" + device_name.lower(),
+                                            verbose=verbose, quiet=quiet, strategy=strategy, strategy_options=strategy_options, simulation_mode=simulation_mode)
 
     return results, env
 
