@@ -78,8 +78,9 @@ def tune(device_name: str, strategy="mls", strategy_options=None, verbose=True, 
 
     results, env = kernel_tuner.tune_kernel("Xgemm", kernel_string, problem_size, args, tune_params, block_size_names=block_size_names, lang="OpenCL",
                                             restrictions=restrict, compiler_options=["-I" + path], grid_div_x=grid_div_x, grid_div_y=grid_div_y, answer=answer,
-                                            atol=1e-2, device=0, platform=0, metrics=metrics, iterations=32, cache="cachefiles/gemm/" + device_name.lower(),
-                                            verbose=verbose, quiet=quiet, strategy=strategy, strategy_options=strategy_options, simulation_mode=simulation_mode)
+                                            atol=1e-2, device=0, platform=0, metrics=metrics, iterations=32,
+                                            cache="../cached_data_used/cachefiles/gemm/" + device_name.lower(), verbose=verbose, quiet=quiet, strategy=strategy,
+                                            strategy_options=strategy_options, simulation_mode=simulation_mode)
 
     return results, env
 
