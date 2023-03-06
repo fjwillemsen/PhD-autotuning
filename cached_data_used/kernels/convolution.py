@@ -41,7 +41,7 @@ def tune(device_name: str, strategy="mls", strategy_options=None, verbose=True, 
     tune_params["tile_size_y"] = [1, 2, 3, 4, 5, 6, 7, 8]
     tune_params["use_padding"] = [0, 1]
 
-    restrict = ["block_size_x*block_size_y>=64", "tile_size_x*tile_size_y<30"]
+    restrict = ["block_size_x*block_size_y>=64", "block_size_x*block_size_y<=1024", "tile_size_x*tile_size_y<30"]
 
     grid_div_x = ["block_size_x", "tile_size_x"]
     grid_div_y = ["block_size_y", "tile_size_y"]
