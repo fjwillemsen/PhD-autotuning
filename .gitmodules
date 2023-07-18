@@ -16,3 +16,6 @@
 [submodule "autotuning_methodology"]
 	path = autotuning_methodology
 	url = git@github.com:fjwillemsen/autotuning_methodology.git
+[submodule "kernel_tuner_paper"]
+	path = kernel_tuner_paper
+	url = https://github.com/fjwillemsen/kernel_tuner_paper
