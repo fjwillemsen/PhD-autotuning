@@ -7,7 +7,8 @@ _This repository is Apache 2.0 licensed._
 
 ## How to use
 1. Clone this repository
-  This repository contains [submodules](https://git-scm.com/book/nl/v2/Git-Tools-Submodules). 
+  This repository contains [submodules](https://git-scm.com/book/nl/v2/Git-Tools-Submodules).
+  Use `git clone --recursive` to recursively clone submodules as well.  
   To register a submodule, move into the directory and use `git submodule init`. 
   Next, execute `git submodule update`. 
 
@@ -17,7 +18,7 @@ _This repository is Apache 2.0 licensed._
   - Use `pip install -r venv_requirements.txt` to install the required packages in the virtual environment. 
   When packages are changed (added, deleted, updated), use `pip freeze > venv_requirements.txt` to make these changes accessible.
   
- 3. Get to know Kernel Tuner **_[optional]_**
+3. Get to know Kernel Tuner **_[optional]_**
   - Initialize the [Kernel Tuner repository](https://github.com/benvanwerkhoven/kernel_tuner/tree/b54b1168532a22a25ec286eb72073bf7a424f3d3) and read the Read Me.
   - If interested, follow the [Kernel Tuner Tutorial](https://github.com/benvanwerkhoven/kernel_tuner_tutorial/tree/b9a7dbba44cbf31673436411dced85383aa44dac).
 
