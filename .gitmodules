@@ -9,7 +9,7 @@
 	url = https://github.com/NTNU-HPC-Lab/BAT.git
 [submodule "autotuning_methodology"]
 	path = autotuning_methodology
-	url = https://github.com/fjwillemsen/autotuning_methodology.git
+	url = https://github.com/AutoTuningAssociation/autotuning_methodology.git
 [submodule "kernel_tuner_paper"]
 	path = kernel_tuner_paper
 	url = https://github.com/fjwillemsen/kernel_tuner_paper
