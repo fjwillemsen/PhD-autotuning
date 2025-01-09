@@ -13,3 +13,9 @@
 [submodule "kernel_tuner_paper"]
 	path = kernel_tuner_paper
 	url = https://github.com/fjwillemsen/kernel_tuner_paper
+[submodule "dashboard"]
+	path = dashboard
+	url = git@github.com:KernelTuner/dashboard.git
+[submodule "metric_search"]
+	path = metric_search
+	url = https://github.com/fjwillemsen/metric_search.git
