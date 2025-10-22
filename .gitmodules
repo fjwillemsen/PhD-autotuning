@@ -19,3 +19,6 @@
 [submodule "metric_search"]
 	path = metric_search
 	url = https://github.com/fjwillemsen/metric_search.git
+[submodule "NextLATuner"]
+	path = NextLATuner
+	url = git@github.com:evelyne-ringoot/NextLATuner.git
